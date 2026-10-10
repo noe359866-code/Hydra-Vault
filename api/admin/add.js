@@ -98,7 +98,7 @@ module.exports = async (req, res) => {
     const insertedRow = await db.createEntry(entry);
     return res.status(201).json({
       success: true,
-      message: 'Contenido insertado correctamente en Layerbase PostgreSQL.',
+      message: 'Contenido insertado correctamente.',
       data: insertedRow
     });
   } catch (error) {
