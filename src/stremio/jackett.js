@@ -1,7 +1,6 @@
 /**
  * Jackett Torznab integration.
- * Requires JACKETT_URL and JACKETT_API_KEY. For production, protect the
- * public tunnel hostname with Cloudflare Access service-token authentication.
+ * Protect the public tunnel hostname with Cloudflare Access service-token authentication.
  */
 const config = require('../config');
 
@@ -17,14 +16,12 @@ function decodeXml(value = '') {
 }
 
 function tagValue(xml, tag) {
-  const safe = tag.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
-  const match = xml.match(new RegExp('<' + safe + '(?:\\s[^>]*)?>([\\s\\S]*?)<\\/' + safe + '>', 'i'));
+  const match = xml.match(new RegExp('<' + tag + '(?:\\s[^>]*)?>([\\s\\S]*?)<\\/' + tag + '>', 'i'));
   return match ? decodeXml(match[1]) : '';
 }
 
 function attrValue(xml, name) {
-  const safe = name.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
-  const match = xml.match(new RegExp("\\b" + safe + "=[\\"']([^\\"']*)[\\"']", 'i'));
+  const match = xml.match(new RegExp("\\b" + name + "=[\\"']([^\\"']*)[\\"']", 'i'));
   return match ? decodeXml(match[1]) : '';
 }
 
