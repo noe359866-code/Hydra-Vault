@@ -32,17 +32,21 @@ async function handleMetaRequest(req, res) {
       releaseInfo: new Date(item.created_at || Date.now()).getFullYear().toString()
     };
 
-    // If it's a series or drama, provide default episode video object so Stremio displays play button
+    // Expose actual episode metadata when the vault stores individual episodes.
     if (stremioType === 'series') {
-      meta.videos = [
-        {
-          id: `${cleanId}:1:1`,
-          title: item.title,
-          season: 1,
-          episode: 1,
-          released: item.created_at || new Date().toISOString()
-        }
-      ];
+      const episodes = rows
+        .filter(row => Number.isInteger(Number(row.season)) && Number(row.season) >= 0 && Number.isInteger(Number(row.episode)) && Number(row.episode) >= 1)
+        .map(row => ({
+          id: `${cleanId}:${Number(row.season)}:${Number(row.episode)}`,
+          title: row.episode_title || row.title,
+          season: Number(row.season),
+          episode: Number(row.episode),
+          released: row.created_at || new Date().toISOString()
+        }));
+      meta.videos = episodes.length ? episodes : [{
+        id: `${cleanId}:1:1`, title: item.title, season: 1, episode: 1,
+        released: item.created_at || new Date().toISOString()
+      }];
     }
 
     return res.json({ meta });
