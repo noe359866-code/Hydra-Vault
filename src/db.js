@@ -412,7 +412,9 @@ async function createEntry(entry) {
     }
   }
 
-  // Memory Fallback
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing to report an in-memory write as persisted.');
+
+  // Memory Fallback (only when no database URL is configured)
   initMemoryStore();
   const newRow = {
     id: nextMemoryId++,
@@ -504,7 +506,9 @@ async function updateEntry(id, entry) {
     }
   }
 
-  // Memory Fallback
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing an in-memory update.');
+
+  // Memory Fallback (only when no database URL is configured)
   initMemoryStore();
   const idx = memoryStore.findIndex(e => e.id === numId);
   if (idx === -1) return null;
@@ -533,6 +537,8 @@ async function deleteEntry(id) {
       throw err;
     }
   }
+
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing an in-memory delete.');
 
   initMemoryStore();
   const idx = memoryStore.findIndex(e => e.id === numId);
@@ -597,7 +603,7 @@ async function findStreamsForStremio({ type, id }) {
     try {
       const sql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
         FROM hydra_vault
         WHERE 
           imdb_id = $1 OR imdb_id = $2
