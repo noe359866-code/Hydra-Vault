@@ -44,7 +44,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Specific Endpoints for Cloudflare Worker & Admin API (matching Vercel serverless files)
-app.all('/api/vault', vaultHandler);
+app.get('/api/vault', vaultHandler);
 app.all('/api/admin/add', adminAddHandler);
 
 // Lightweight static pages (also rewritten directly to static files on Vercel).
