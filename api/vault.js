@@ -4,7 +4,7 @@
  * Consulta streams curados por múltiples IDs (IMDb, TMDb, AniList, Kitsu, Custom o PK)
  */
 
-const { findStreamsById } = require('../lib/db');
+const db = require('../src/db');
 
 module.exports = async (req, res) => {
   // CORS Headers
@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    const rows = await findStreamsById(id.trim());
+    const rows = await db.findStreamsForStremio({ type: 'movie', id: id.trim() });
 
     // Format streams according to specification
     const streams = rows.map(row => {
