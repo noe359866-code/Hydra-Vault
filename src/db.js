@@ -136,7 +136,7 @@ async function initDb() {
           await client.query(
             `INSERT INTO hydra_vault (
               imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-              type, source_platform, title, magnet,
+              type, season, episode, episode_title, source_platform, title, magnet,
               quality, audio_lang, subtitles, size, seeders
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
@@ -486,7 +486,7 @@ async function updateEntry(id, entry) {
           quality = $13, audio_lang = $14, subtitles = $15, size = $16, seeders = $17
         WHERE id = $18
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                  type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
       `;
       const values = [
         merged.imdb_id, merged.tmdb_id, merged.anilist_id, merged.kitsu_id, merged.custom_id,
