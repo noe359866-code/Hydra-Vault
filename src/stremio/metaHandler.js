@@ -1,0 +1,57 @@
+const db = require('../db');
+
+/**
+ * Handles GET /meta/:type/:id.json requests
+ */
+async function handleMetaRequest(req, res) {
+  const { type, id } = req.params;
+  const cleanId = id.replace(/\.json$/, '');
+
+  try {
+    const rows = await db.findStreamsForStremio({ type, id: cleanId });
+
+    if (!rows || rows.length === 0) {
+      return res.json({ meta: null });
+    }
+
+    const item = rows[0];
+    let stremioType = item.type;
+    if (stremioType === 'drama') stremioType = 'series';
+
+    const genres = [item.source_platform, item.quality, item.audio_lang].filter(Boolean);
+
+    const meta = {
+      id: cleanId,
+      type: stremioType,
+      name: item.title,
+      genres,
+      posterShape: 'regular',
+      background: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1920&auto=format&fit=crop',
+      description: `[Hydra Vault] Contenido curado exclusivo.\nPlataforma: ${item.source_platform}\nCalidad: ${item.quality}\nAudio: ${item.audio_lang}\nTamaño: ${item.size}\nSeeders: ${item.seeders}`,
+      releaseInfo: new Date(item.created_at || Date.now()).getFullYear().toString()
+    };
+
+    // If it's a series or drama, provide default episode video object so Stremio displays play button
+    if (stremioType === 'series') {
+      meta.videos = [
+        {
+          id: `${cleanId}:1:1`,
+          title: item.title,
+          season: 1,
+          episode: 1,
+          released: item.created_at || new Date().toISOString()
+        }
+      ];
+    }
+
+    res.setHeader('Cache-Control', 'max-age=1800, stale-while-revalidate=3600');
+    return res.json({ meta });
+  } catch (err) {
+    console.error('Error handling meta request:', err.message);
+    return res.json({ meta: null });
+  }
+}
+
+module.exports = {
+  handleMetaRequest
+};
