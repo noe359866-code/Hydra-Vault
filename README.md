@@ -403,3 +403,29 @@ Después de configurar las variables, vuelve a desplegar. Si Jackett no está co
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia MIT.
+
+
+## Vercel + Jackett en Windows (túnel seguro)
+
+Arquitectura: Stremio → addon en Vercel → hostname HTTPS protegido por Cloudflare Access → Cloudflare Tunnel → Jackett local en `http://127.0.0.1:9117`.
+
+1. Instala Jackett en Windows 10/11 y comprueba que abre en `http://127.0.0.1:9117`. Copia la API Key desde su panel.
+2. En Cloudflare, crea un Tunnel desde **Networking → Tunnels** y publica un hostname dedicado (por ejemplo, `jackett.example.com`) apuntando a `http://127.0.0.1:9117`. Necesitas un dominio gestionado por Cloudflare para el hostname estable.
+3. En Cloudflare Zero Trust, crea un **Service Token** y una política de Access para que ese hostname solo permita solicitudes con dicho token. Ejecuta el conector `cloudflared` en el PC y comprueba que el túnel esté **Healthy**.
+4. No abras el puerto 9117 en el router ni publiques Jackett sin Access. El token de túnel, el Service Token y la API Key son secretos; nunca los guardes en GitHub o en el frontend.
+5. En **Vercel → Settings → Environment Variables**, añade en Production:
+
+| Variable | Valor |
+| --- | --- |
+| `JACKETT_URL` | `https://jackett.example.com` (sin barra final) |
+| `JACKETT_API_KEY` | API Key de Jackett |
+| `JACKETT_ACCESS_CLIENT_ID` | Client ID del Service Token de Cloudflare |
+| `JACKETT_ACCESS_CLIENT_SECRET` | Client Secret del mismo Service Token |
+| `JACKETT_TIMEOUT_MS` | `5000` (opcional, máximo 15000) |
+| `JACKETT_MAX_RESULTS` | `8` (opcional, máximo 20) |
+
+6. Guarda las variables y crea un nuevo deployment en Vercel. Después prueba un título desde Stremio y revisa los Runtime Logs. Si Jackett está apagado o el túnel falla, los streams guardados en la base de datos deben seguir funcionando; las búsquedas de Jackett simplemente no añadirán resultados.
+
+Documentación oficial: https://developers.cloudflare.com/tunnel/get-started/ · https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/ · https://vercel.com/docs/environment-variables
+
+**Nota:** la PC debe permanecer encendida y conectada a Internet. Para probar el hostname, una solicitud sin credenciales debe ser bloqueada por Cloudflare Access. No publiques URLs completas con `apikey=` en logs o capturas.
