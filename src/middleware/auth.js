@@ -18,22 +18,6 @@ function extractToken(req) {
     return String(req.headers['x-admin-secret']).trim();
   }
 
-  // 3. Query params: ?secret=... or ?token=...
-  if (req.query && (req.query.secret || req.query.token)) {
-    return String(req.query.secret || req.query.token).trim();
-  }
-
-  // 4. Cookie: admin_secret=...
-  if (req.headers.cookie) {
-    const cookies = req.headers.cookie.split(';');
-    for (const c of cookies) {
-      const [key, val] = c.trim().split('=');
-      if (key === 'admin_secret') {
-        return decodeURIComponent(val);
-      }
-    }
-  }
-
   return null;
 }
 
