@@ -21,7 +21,7 @@ function tagValue(xml, tag) {
 }
 
 function attrValue(xml, name) {
-  const match = xml.match(new RegExp("\\b" + name + "=[\\"']([^\\"']*)[\\"']", 'i'));
+  const match = xml.match(new RegExp("\\b" + name + "=[\"']([^\"']*)[\"']", 'i'));
   return match ? decodeXml(match[1]) : '';
 }
 
