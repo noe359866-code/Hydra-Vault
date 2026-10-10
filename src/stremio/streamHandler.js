@@ -5,7 +5,7 @@ const { searchJackett } = require('./jackett');
 
 /**
  * Handles GET /stream/:type/:id.json requests.
- * Local curated entries remain first; Jackett supplements missing releases.
+ * Curated database results are returned first; Jackett supplements them.
  */
 async function handleStreamRequest(req, res) {
   const { type } = req.params;
@@ -19,17 +19,16 @@ async function handleStreamRequest(req, res) {
     const episode = idParts.length >= 3 && /^\d+$/.test(idParts[2]) ? Number(idParts[2]) : null;
     const rows = await db.findStreamsForStremio({ type, id: cleanId });
     const streams = (rows || []).map(formatStremioStream);
-    const enabled = Boolean(config.jackett.url && config.jackett.apiKey);
 
-    if (enabled) {
+    if (config.jackett.url && config.jackett.apiKey) {
       const external = await searchJackett({
         id: baseId,
         type,
         season,
         episode,
-        title: req.query?.search || undefined
+        title: req.query?.search || (rows && rows[0] && rows[0].title) || undefined
       });
-      const seen = new Set(streams.map(s => s.infoHash).filter(Boolean));
+      const seen = new Set(streams.map(stream => stream.infoHash || stream.url || stream.externalUrl).filter(Boolean));
       for (const item of external) {
         const formatted = formatStremioStream({
           title: item.title,
