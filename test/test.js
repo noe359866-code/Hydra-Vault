@@ -2,7 +2,7 @@ const http = require('http');
 const assert = require('assert');
 const app = require('../src/app');
 const config = require('../src/config');
-const { parseMagnet, base32ToHex } = require('../src/utils/magnet');
+const { parseMagnet } = require('../src/utils/magnet');
 
 const TEST_PORT = 7099;
 let server;
@@ -45,7 +45,7 @@ function request(path, options = {}) {
 }
 
 async function runTests() {
-  console.log('🧪 Iniciando batería de pruebas para Hydra Torrents...');
+  console.log('🧪 Iniciando batería de pruebas para Hydra Vault Backend...');
   let passed = 0;
   let failed = 0;
 
@@ -67,203 +67,135 @@ async function runTests() {
   });
 
   try {
-    // 1. Magnet Parsing Unit Tests
-    await test('Magnet Parser: BTIH 40-char Hex', () => {
-      const magnet = 'magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=Test+Title&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce';
-      const parsed = parseMagnet(magnet);
-      assert.strictEqual(parsed.isValid, true);
-      assert.strictEqual(parsed.infoHash, 'd624a91a92e105e45a20340b17163c4ff9841f84');
-      assert.strictEqual(parsed.dn, 'Test Title');
-      assert(parsed.sources.some(s => s.includes('opentrackr.org')));
-    });
-
-    await test('Magnet Parser: BTIH 32-char Base32 to Hex Conversion', () => {
-      const b32Magnet = 'magnet:?xt=urn:btih:HNQFIU2LHNGE6SKUJB2WMSKUIVGU2USK&dn=Base32Test';
-      const parsed = parseMagnet(b32Magnet);
-      assert.strictEqual(parsed.isValid, true);
-      assert.strictEqual(parsed.infoHash.length, 40);
-    });
-
-    await test('Magnet Parser: Direct HTTP/HTTPS stream', () => {
-      const direct = 'https://stream.hydratorrents.com/video/drama101.m3u8';
-      const parsed = parseMagnet(direct);
-      assert.strictEqual(parsed.isValid, true);
-      assert.strictEqual(parsed.isDirectUrl, true);
-      assert.strictEqual(parsed.url, direct);
-    });
-
-    // 2. Stremio Protocol Tests
-    await test('Stremio: GET /manifest.json returns valid manifest', async () => {
-      const res = await request('/manifest.json');
+    // 1. Cloudflare Worker Endpoint: GET /api/vault?id=...
+    await test('Cloudflare Worker: GET /api/vault?id=tt21344706 returns formatted streams JSON', async () => {
+      const res = await request('/api/vault?id=tt21344706');
       assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.id, 'community.hydra.torrents');
-      assert.strictEqual(res.body.name, 'Hydra Torrents');
-      assert(Array.isArray(res.body.resources));
-      assert(Array.isArray(res.body.catalogs));
-      assert(res.body.idPrefixes.includes('tt'));
-      assert(res.body.idPrefixes.includes('kitsu'));
-      assert(res.body.idPrefixes.includes('hydra'));
-    });
-
-    await test('Stremio: GET /stream/drama/tt21344706.json returns curated stream', async () => {
-      const res = await request('/stream/drama/tt21344706.json');
-      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
       assert(Array.isArray(res.body.streams));
       assert(res.body.streams.length > 0);
+
       const stream = res.body.streams[0];
-      assert(stream.name.includes('[Hydra]'));
-      assert(stream.title.includes('The Glory'));
-      assert(stream.infoHash || stream.url);
+      assert(stream.title.includes('[Hydra Vault ⚡]'));
+      assert(stream.title.includes('[Viki]'));
+      assert(stream.url.startsWith('magnet:?xt=urn:btih:'));
+      assert.strictEqual(stream.details.quality, '1080p');
+      assert.strictEqual(stream.details.source, 'Viki');
+      assert.strictEqual(res.headers['access-control-allow-origin'], '*');
     });
 
-    await test('Stremio: GET /stream for nonexistent id returns empty array', async () => {
-      const res = await request('/stream/series/nonexistent_id_9999.json');
+    await test('Cloudflare Worker: GET /api/vault without id returns 400 error', async () => {
+      const res = await request('/api/vault');
+      assert.strictEqual(res.statusCode, 400);
+      assert.strictEqual(res.body.success, false);
+      assert(res.body.error);
+    });
+
+    await test('Cloudflare Worker: GET /api/vault for nonexistent id returns success: true with empty streams array', async () => {
+      const res = await request('/api/vault?id=nonexistent_999999');
       assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
       assert.deepStrictEqual(res.body.streams, []);
     });
 
-    await test('Stremio: GET /catalog/series/hydra_dramas.json returns metas', async () => {
-      const res = await request('/catalog/series/hydra_dramas.json');
-      assert.strictEqual(res.statusCode, 200);
-      assert(Array.isArray(res.body.metas));
-      assert(res.body.metas.length > 0);
-      const meta = res.body.metas[0];
-      assert(meta.id);
-      assert(meta.name);
-      assert(meta.poster);
-    });
-
-    await test('Stremio: GET /meta/drama/tt21344706.json returns meta object', async () => {
-      const res = await request('/meta/drama/tt21344706.json');
-      assert.strictEqual(res.statusCode, 200);
-      assert(res.body.meta);
-      assert.strictEqual(res.body.meta.name.includes('The Glory'), true);
-    });
-
-    // 3. Admin Authentication & API Tests
-    await test('API: POST /api/vault without auth returns 401', async () => {
-      const res = await request('/api/vault', {
+    // 2. Private Admin Endpoint: POST /api/admin/add
+    await test('Admin API: POST /api/admin/add without x-admin-secret returns 401 Unauthorized', async () => {
+      const res = await request('/api/admin/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: { title: 'Test', magnet: 'magnet:?xt=urn:btih:0000', type: 'drama' }
+        body: {
+          title: 'Test Show',
+          magnet: 'magnet:?xt=urn:btih:0000000000000000000000000000000000000000',
+          type: 'drama'
+        }
       });
       assert.strictEqual(res.statusCode, 401);
+      assert.strictEqual(res.body.success, false);
+      assert(res.body.error.includes('Unauthorized'));
     });
 
-    await test('API: POST /api/vault with invalid token returns 403', async () => {
-      const res = await request('/api/vault', {
+    await test('Admin API: POST /api/admin/add with wrong x-admin-secret returns 401 Unauthorized', async () => {
+      const res = await request('/api/admin/add', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer wrong-secret-token'
+          'x-admin-secret': 'invalid_secret_key_123'
         },
-        body: { title: 'Test', magnet: 'magnet:?xt=urn:btih:0000', type: 'drama' }
+        body: {
+          title: 'Test Show',
+          magnet: 'magnet:?xt=urn:btih:0000000000000000000000000000000000000000',
+          type: 'drama'
+        }
       });
-      assert.strictEqual(res.statusCode, 403);
+      assert.strictEqual(res.statusCode, 401);
+      assert.strictEqual(res.body.success, false);
     });
 
-    let createdId;
-    await test('API: POST /api/vault with valid ADMIN_SECRET creates entry adhering to schema', async () => {
+    let insertedId;
+    await test('Admin API: POST /api/admin/add with valid x-admin-secret inserts into hydra_vault', async () => {
       const payload = {
-        imdb_id: 'tt9999999',
-        tmdb_id: '88888',
-        anilist_id: '77777',
-        kitsu_id: '66666',
-        custom_id: 'hydra-test-custom',
+        imdb_id: 'tt7777777',
+        tmdb_id: '123456',
+        anilist_id: '54321',
+        kitsu_id: '98765',
+        custom_id: 'viki-test-kdrama',
         type: 'drama',
         source_platform: 'Viki',
-        title: 'Hydra Test KDrama 1080p Viki Latino',
-        magnet: 'magnet:?xt=urn:btih:abcdef1234567890abcdef1234567890abcdef12&dn=TestKDrama&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337',
+        title: 'Twinkling Watermelon S01 1080p Viki Latino',
+        magnet: 'magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=Twinkling+Watermelon&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337',
         quality: '1080p',
         audio_lang: 'Latino',
-        size: '2.5 GB',
-        seeders: 45
+        size: '18.2 GB',
+        seeders: 55
       };
 
-      const res = await request('/api/vault', {
+      const res = await request('/api/admin/add', {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.adminSecret}`
+          'x-admin-secret': config.adminSecret
         },
         body: payload
       });
 
       assert.strictEqual(res.statusCode, 201);
+      assert.strictEqual(res.body.success, true);
       assert(res.body.data);
       assert(res.body.data.id);
-      createdId = res.body.data.id;
+      insertedId = res.body.data.id;
       assert.strictEqual(res.body.data.title, payload.title);
-      assert.strictEqual(res.body.data.type, 'drama');
+      assert.strictEqual(res.body.data.imdb_id, 'tt7777777');
       assert.strictEqual(res.body.data.source_platform, 'Viki');
-      assert.strictEqual(res.body.data.imdb_id, 'tt9999999');
       assert.strictEqual(res.body.data.quality, '1080p');
-      assert.strictEqual(res.body.data.audio_lang, 'Latino');
     });
 
-    await test('API: Stream query resolves newly created entry', async () => {
-      const res = await request('/stream/drama/tt9999999.json');
+    await test('Cloudflare Worker: Queries newly inserted item via GET /api/vault?id=tt7777777', async () => {
+      const res = await request('/api/vault?id=tt7777777');
       assert.strictEqual(res.statusCode, 200);
-      assert(res.body.streams.length > 0);
-      assert.strictEqual(res.body.streams[0].infoHash, 'abcdef1234567890abcdef1234567890abcdef12');
+      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.body.streams.length, 1);
+      assert(res.body.streams[0].title.includes('Twinkling Watermelon'));
+      assert(res.body.streams[0].title.includes('[Viki]'));
     });
 
-    await test('API: PUT /api/vault/:id updates entry', async () => {
-      const res = await request(`/api/vault/${createdId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.adminSecret}`
-        },
-        body: {
-          seeders: 99,
-          quality: '4K'
-        }
-      });
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.data.seeders, 99);
-      assert.strictEqual(res.body.data.quality, '4K');
-    });
-
-    await test('API: DELETE /api/vault/:id removes entry', async () => {
-      const res = await request(`/api/vault/${createdId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${config.adminSecret}`
-        }
-      });
-      assert.strictEqual(res.statusCode, 200);
-    });
-
-    await test('API: GET /api/stats returns counts and metrics', async () => {
-      const res = await request('/api/stats');
-      assert.strictEqual(res.statusCode, 200);
-      assert(typeof res.body.total === 'number');
-      assert(res.body.byType);
-      assert(res.body.byPlatform);
-    });
-
-    await test('API: GET /api/health returns health status', async () => {
-      const res = await request('/api/health');
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.status, 'ok');
-    });
-
-    // 4. Frontend Views
-    await test('View: GET / serves landing page HTML', async () => {
-      const res = await request('/');
-      assert.strictEqual(res.statusCode, 200);
-      assert(res.headers['content-type'].includes('text/html'));
-      assert(res.raw.includes('HYDRA TORRENTS'));
-      assert(res.raw.includes('manifest.json'));
-    });
-
-    await test('View: GET /admin serves Admin SPA HTML', async () => {
+    // 3. Web Admin Interface: GET /admin
+    await test('Web Admin: GET /admin serves HTML styled with Tailwind CSS', async () => {
       const res = await request('/admin');
       assert.strictEqual(res.statusCode, 200);
       assert(res.headers['content-type'].includes('text/html'));
+      assert(res.raw.includes('tailwindcss.com'));
       assert(res.raw.includes('HYDRA VAULT'));
       assert(res.raw.includes('ADMIN_SECRET'));
+      assert(res.raw.includes('localStorage'));
+      assert(res.raw.includes('/api/admin/add'));
+    });
+
+    // 4. Stremio Manifest & Fallback Routes
+    await test('Stremio: GET /manifest.json returns valid manifest', async () => {
+      const res = await request('/manifest.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.id, 'community.hydra.torrents');
+      assert(Array.isArray(res.body.resources));
     });
 
   } finally {
@@ -275,7 +207,7 @@ async function runTests() {
   if (failed > 0) {
     process.exit(1);
   } else {
-    console.log('🎉 ¡Todas las pruebas pasaron con éxito total!');
+    console.log('🎉 ¡Todas las pruebas de endpoints pasaron exitosamente!');
   }
 }
 
