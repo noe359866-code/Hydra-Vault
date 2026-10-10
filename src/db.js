@@ -138,11 +138,13 @@ async function initDb() {
               imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
               type, season, episode, episode_title, source_platform, title, magnet,
               quality, audio_lang, subtitles, size, seeders
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
             [
               item.imdb_id, item.tmdb_id, item.anilist_id, item.kitsu_id, item.custom_id,
-              item.type, item.source_platform, item.title, item.magnet,
-              item.quality, item.audio_lang, item.subtitles || 'Multi', item.size, item.seeders
+              item.type, item.season ?? null, item.episode ?? null, item.episode_title ?? null,
+              item.source_platform || 'Torrent', item.title, item.magnet,
+              item.quality || '1080p', item.audio_lang || 'Multi', item.subtitles || 'Multi',
+              item.size || 'N/D', Number.isInteger(item.seeders) ? item.seeders : 10
             ]
           );
         }
