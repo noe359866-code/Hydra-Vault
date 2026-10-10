@@ -193,6 +193,20 @@ async function runTests() {
       assert(res.body.streams[0].title.includes('[Viki]'));
     });
 
+    await test('Stremio: stored season and episode resolve to the correct stream', async () => {
+      const res = await request('/stream/series/tt7777777:1:3.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert(Array.isArray(res.body.streams));
+      assert(res.body.streams.some(stream => stream.title.includes('Twinkling Watermelon')));
+    });
+
+    await test('Stremio: meta exposes the stored season and episode', async () => {
+      const res = await request('/meta/series/tt7777777.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert(Array.isArray(res.body.meta.videos));
+      assert(res.body.meta.videos.some(video => video.season === 1 && video.episode === 3));
+    });
+
     // 3. Static web pages: no frontend framework or third-party assets.
     await test('Landing page is served locally without external fonts or scripts', async () => {
       const res = await request('/');
