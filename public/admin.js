@@ -51,6 +51,14 @@ form.addEventListener('submit', async (event) => {
   }
 
   const parsedSeeders = Number.parseInt(valueOf('seeders'), 10);
+  const seasonText = valueOf('season');
+  const episodeText = valueOf('episode');
+  const isEpisodic = ['anime', 'series', 'drama'].includes(valueOf('type'));
+  if ((seasonText === '') !== (episodeText === '') || (isEpisodic && seasonText === '')) {
+    showStatus('Para series, dramas y anime indica temporada y episodio. Para películas deja ambos vacíos.', true);
+    return;
+  }
+
   const payload = {
     imdb_id: valueOf('imdb_id') || null,
     tmdb_id: valueOf('tmdb_id') || null,
