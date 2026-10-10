@@ -1,0 +1,31 @@
+{
+  "name": "hydra-vault",
+  "version": "1.0.0",
+  "description": "Hydra Torrents - Stremio Addon & Admin Panel for Curated Asian Dramas, Anime & Rare Content with Layerbase PostgreSQL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "stremio",
+    "stremio-addon",
+    "torrents",
+    "viki",
+    "iqiyi",
+    "dramas",
+    "anime",
+    "layerbase",
+    "postgresql",
+    "vercel"
+  ],
+  "author": "Hydra Team",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}
