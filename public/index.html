@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f6">
+  <meta name="description" content="Hydra Torrents: contenido curado para Stremio.">
+  <title>Hydra Vault — Add-on para Stremio</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="landing-page">
+  <div class="site-shell">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Hydra Torrents, inicio">
+        <img class="brand-mark" src="/favicon.svg" alt="" width="36" height="36">
+        <span class="brand-name">Hydra <span>Vault</span></span>
+      </a>
+      <a class="header-link" href="/admin">Administración</a>
+    </header>
+
+    <main>
+      <section class="landing-hero">
+        <p class="eyebrow">Add-on comunitario para Stremio</p>
+        <h1>Tu contenido curado, <span>sin complicaciones.</span></h1>
+        <p class="hero-copy">Dramas asiáticos, anime y películas difíciles de encontrar, reunidos en un catálogo sencillo para Stremio.</p>
+        <div class="hero-actions">
+          <a class="button" id="install-link" href="/manifest.json">Instalar en Stremio</a>
+          <button class="button button-secondary" id="copy-link" type="button">Copiar enlace</button>
+        </div>
+        <p class="manifest-label">Enlace del manifiesto</p>
+        <code class="manifest-url" id="manifest-url">/manifest.json</code>
+        <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="feature-list" aria-label="Contenido disponible">
+        <article class="feature-item">
+          <h2>Dramas asiáticos</h2>
+          <p>Selección de títulos de Viki, iQiyi y más.</p>
+        </article>
+        <article class="feature-item">
+          <h2>Anime</h2>
+          <p>Series y películas con distintas opciones de audio.</p>
+        </article>
+        <article class="feature-item">
+          <h2>Cine y rarezas</h2>
+          <p>Un espacio para obras difíciles de encontrar.</p>
+        </article>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Hydra Torrents</span>
+      <span>Ligero, sin librerías externas.</span>
+    </footer>
+  </div>
+
+  <script>
+    const manifestUrl = `${window.location.origin}/manifest.json`;
+    const installLink = document.getElementById('install-link');
+    const manifestLabel = document.getElementById('manifest-url');
+    const copyStatus = document.getElementById('copy-status');
+
+    installLink.href = manifestUrl.replace(/^https?:\/\//, 'stremio://');
+    manifestLabel.textContent = manifestUrl;
+
+    document.getElementById('copy-link').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(manifestUrl);
+        copyStatus.textContent = 'Enlace copiado.';
+      } catch {
+        copyStatus.textContent = 'No se pudo copiar. Selecciona y copia el enlace.';
+      }
+    });
+  </script>
+</body>
+</html>

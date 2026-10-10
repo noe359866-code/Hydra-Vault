@@ -11,7 +11,7 @@ router.get('/manifest.json', (req, res) => {
   const host = req.get('host') || 'localhost:7000';
   const baseUrl = `${protocol}://${host}`;
 
-  res.setHeader('Cache-Control', 'max-age=3600, stale-while-revalidate=7200');
+  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400');
   res.json(getManifest(baseUrl));
 });
 

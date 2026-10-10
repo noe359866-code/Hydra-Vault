@@ -17,6 +17,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=The+Glory+S01+1080p+Viki+Dual+Latino&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce',
     quality: '1080p',
     audio_lang: 'Latino / Coreano',
+    subtitles: 'Español',
     size: '14.2 GB',
     seeders: 85
   },
@@ -32,6 +33,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:a1b2c3d4e5f60718293a4b5c6d7e8f9012345678&dn=Crash+Landing+on+You+1080p+Viki+Sub+Esp&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Sub Español',
+    subtitles: 'Español',
     size: '18.5 GB',
     seeders: 64
   },
@@ -47,6 +49,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:b2c3d4e5f6a108192a3b4c5d6e7f80123456789a&dn=The+Untamed+Special+Edition+1080p+Viki&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Sub Español',
+    subtitles: 'Español',
     size: '22.0 GB',
     seeders: 52
   },
@@ -62,6 +65,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:c3d4e5f6a1b219203b4c5d6e7f8a90123456789b&dn=Twinkling+Watermelon+1080p+Viki+Sub+Esp&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Sub Español',
+    subtitles: 'Español',
     size: '16.8 GB',
     seeders: 41
   },
@@ -79,6 +83,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:d4e5f6a1b2c320314c5d6e7f8a9b0123456789ab&dn=Love+Between+Fairy+and+Devil+4K+iQiyi&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '4K',
     audio_lang: 'Multi Sub (Esp/Eng/Chn)',
+    subtitles: 'Español',
     size: '28.4 GB',
     seeders: 77
   },
@@ -94,6 +99,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:e5f6a1b2c3d431425d6e7f8a9b0c123456789abc&dn=Story+of+Kunning+Palace+1080p+iQiyi&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Sub Español',
+    subtitles: 'Español',
     size: '19.1 GB',
     seeders: 39
   },
@@ -109,6 +115,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:f6a1b2c3d4e542536e7f8a9b0c1d23456789abcd&dn=My+Journey+to+You+4K+iQiyi&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '4K',
     audio_lang: 'Sub Español',
+    subtitles: 'Español',
     size: '26.0 GB',
     seeders: 48
   },
@@ -126,6 +133,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b&dn=Frieren+S01+1080p+Dual+Latino&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Latino / Japonés',
+    subtitles: 'Español',
     size: '15.6 GB',
     seeders: 140
   },
@@ -141,6 +149,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c&dn=Kimetsu+no+Yaiba+S01+BDRip+1080p&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Jap/Sub & Latino',
+    subtitles: 'Español',
     size: '18.2 GB',
     seeders: 195
   },
@@ -156,6 +165,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d&dn=Spirited+Away+4K+UHD+Latino&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '4K',
     audio_lang: 'Latino / Japonés',
+    subtitles: 'Español',
     size: '12.8 GB',
     seeders: 110
   },
@@ -173,6 +183,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e&dn=Cinema+Paradiso+Directors+Cut+1080p&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '1080p',
     audio_lang: 'Italiano / Sub Español',
+    subtitles: 'Español',
     size: '8.4 GB',
     seeders: 45
   },
@@ -188,6 +199,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f&dn=Amelie+Criterion+4K+HDR+Sub+Esp&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '4K',
     audio_lang: 'Francés / Sub Español',
+    subtitles: 'Español',
     size: '16.5 GB',
     seeders: 62
   },
@@ -203,6 +215,7 @@ const SEED_ENTRIES = [
     magnet: 'magnet:?xt=urn:btih:6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a&dn=Pans+Labyrinth+4K+UHD+Atmos&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce',
     quality: '4K',
     audio_lang: 'Español Original',
+    subtitles: 'Español',
     size: '19.8 GB',
     seeders: 88
   }

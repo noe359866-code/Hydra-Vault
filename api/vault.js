@@ -40,23 +40,26 @@ module.exports = async (req, res) => {
       const source = row.source_platform || 'Torrent';
       const quality = row.quality || '1080p';
       const audio = row.audio_lang || 'Multi';
+      const subtitles = row.subtitles || 'Multi';
       const size = row.size || 'N/D';
+      const badges = [`[${source}]`, quality, `Audio: ${audio}`, `Subs: ${subtitles}`];
 
       return {
-        title: `[Hydra Vault ⚡] [${source}] ${quality} | ${audio}\n${row.title}`,
+        title: `[Hydra Vault ⚡] ${badges.join(' | ')}\n${row.title}`,
         url: row.magnet,
         details: {
           quality,
           size,
           source,
           seeders: row.seeders !== null && row.seeders !== undefined ? row.seeders : 10,
-          audio
+          audio,
+          subtitles
         }
       };
     });
 
     // Caching header for performance and CDN
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     
     return res.status(200).json({
       success: true,

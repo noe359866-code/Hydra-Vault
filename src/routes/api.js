@@ -103,6 +103,7 @@ router.post('/vault', requireAdminAuth, async (req, res) => {
       magnet,
       quality,
       audio_lang,
+      subtitles,
       size,
       seeders
     } = req.body;
@@ -129,6 +130,7 @@ router.post('/vault', requireAdminAuth, async (req, res) => {
       magnet,
       quality: quality || '1080p',
       audio_lang: audio_lang || 'Multi',
+      subtitles: subtitles || 'Multi',
       size: size || 'N/D',
       seeders: seeders !== undefined ? parseInt(seeders, 10) : 10
     });

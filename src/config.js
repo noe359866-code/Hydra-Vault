@@ -1,14 +1,18 @@
 require('dotenv').config();
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+const isProduction = nodeEnv === 'production' || process.env.VERCEL === '1';
+
 const config = {
   port: parseInt(process.env.PORT || '7000', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
   
   // Layerbase PostgreSQL connection URL
   databaseUrl: process.env.LAYERBASE_DATABASE_URL || '',
   
   // Admin Secret for API and Admin Panel authentication
-  adminSecret: process.env.ADMIN_SECRET || 'hydra-dev-secret-2026',
+  // Never allow the development fallback to protect production endpoints.
+  adminSecret: process.env.ADMIN_SECRET || (isProduction ? '' : 'hydra-dev-secret-2026'),
   hasCustomSecret: Boolean(process.env.ADMIN_SECRET),
   
   // Stremio Addon Configuration

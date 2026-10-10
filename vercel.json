@@ -1,7 +1,12 @@
 {
   "version": 2,
   "rewrites": [
+    { "source": "/", "destination": "/public/index.html" },
+    { "source": "/configure", "destination": "/public/index.html" },
     { "source": "/admin", "destination": "/public/admin.html" },
+    { "source": "/styles.css", "destination": "/public/styles.css" },
+    { "source": "/admin.js", "destination": "/public/admin.js" },
+    { "source": "/favicon.svg", "destination": "/public/favicon.svg" },
     { "source": "/api/vault", "destination": "/api/vault.js" },
     { "source": "/api/admin/add", "destination": "/api/admin/add.js" },
     { "source": "/(.*)", "destination": "/api/index.js" }

@@ -148,6 +148,7 @@ function formatStremioStream(entry) {
   const quality = entry.quality || '1080p';
   const platform = entry.source_platform || 'Vault';
   const audio = entry.audio_lang || 'Multi';
+  const subtitles = entry.subtitles || 'Multi';
   const size = entry.size && entry.size !== 'N/D' ? entry.size : (parsed.suggestedSize || 'N/D');
   const seeders = Number.isInteger(entry.seeders) ? entry.seeders : 10;
 
@@ -159,6 +160,7 @@ function formatStremioStream(entry) {
   if (seeders !== null && seeders !== undefined) techDetails.push(`⚡ ${seeders} seeds`);
   if (size && size !== 'N/D') techDetails.push(`💾 ${size}`);
   if (audio) techDetails.push(`🌐 ${audio}`);
+  if (subtitles) techDetails.push(`💬 Subs: ${subtitles}`);
   if (platform) techDetails.push(`🏷️ ${platform}`);
   
   if (techDetails.length > 0) {
