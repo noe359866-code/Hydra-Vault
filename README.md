@@ -379,6 +379,27 @@ Valida:
 
 ---
 
+
+## 🔎 Búsqueda automática con Jackett (opcional)
+
+Hydra Vault puede consultar Jackett/Torznab automáticamente cuando Stremio pide los streams, para evitar agregar cada magnet manualmente. Los resultados curados de PostgreSQL aparecen primero y Jackett añade resultados indexados sin duplicar hashes. Solo usa indexadores y contenido para los que tengas autorización.
+
+Configura estas variables en el entorno del servidor (Vercel → Project → Settings → Environment Variables, o en `.env` para un VPS):
+
+```env
+JACKETT_URL=http://jackett:9117
+JACKETT_API_KEY=tu_api_key_de_jackett
+JACKETT_TIMEOUT_MS=5000
+JACKETT_MAX_RESULTS=8
+```
+
+- `JACKETT_URL`: URL base accesible **desde el servidor Hydra**, sin terminar en `/`. No uses `localhost` si Hydra está desplegado en Vercel: en ese caso debe ser una URL privada/pública alcanzable desde Vercel.
+- `JACKETT_API_KEY`: clave de Jackett; se mantiene en el servidor y nunca se entrega al navegador ni al manifiesto.
+- `JACKETT_TIMEOUT_MS`: tiempo máximo por consulta (1–15 segundos; predeterminado 5 s).
+- `JACKETT_MAX_RESULTS`: máximo de resultados procesados (1–20; predeterminado 8).
+
+Después de configurar las variables, vuelve a desplegar. Si Jackett no está configurado o no responde, Hydra sigue devolviendo los streams guardados en la base de datos. En Vercel, el endpoint serverless debe poder alcanzar la URL de Jackett; un Jackett instalado solo en tu PC no será accesible desde la nube.
+
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia MIT.
