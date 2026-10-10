@@ -6,6 +6,7 @@ const { formatStremioStream } = require('../utils/magnet');
  */
 async function handleStreamRequest(req, res) {
   const { type, id } = req.params;
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=300');
   
   // Clean id by stripping .json if present in the param
   const cleanId = id.replace(/\.json$/, '');
@@ -19,8 +20,6 @@ async function handleStreamRequest(req, res) {
 
     const streams = rows.map(formatStremioStream);
 
-    // Stremio caching headers
-    res.setHeader('Cache-Control', 'max-age=1800, stale-while-revalidate=3600');
     return res.json({ streams });
   } catch (err) {
     console.error(`Error resolving streams for type=${type}, id=${cleanId}:`, err.message);

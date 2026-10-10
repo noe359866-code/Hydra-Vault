@@ -42,6 +42,7 @@ function escapeXml(unsafe) {
  * Handles GET /catalog/:type/:id.json and GET /catalog/:type/:id/:extra.json
  */
 async function handleCatalogRequest(req, res) {
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=300');
   const { type, id } = req.params;
   const cleanCatalogId = id.replace(/\.json$/, '');
 
@@ -77,6 +78,7 @@ async function handleCatalogRequest(req, res) {
       const genres = [];
       if (item.source_platform) genres.push(item.source_platform);
       if (item.audio_lang) genres.push(item.audio_lang);
+      if (item.subtitles) genres.push(`Subs: ${item.subtitles}`);
       if (item.quality) genres.push(item.quality);
 
       return {
@@ -86,11 +88,10 @@ async function handleCatalogRequest(req, res) {
         genres,
         poster: createFallbackPoster(item.title, item.source_platform, item.quality),
         posterShape: 'regular',
-        description: `Hydra Curated Vault • ${item.source_platform} • Calidad: ${item.quality} • Audio: ${item.audio_lang} • Seeds: ${item.seeders}`
+        description: `Hydra Curated Vault • ${item.source_platform} • Calidad: ${item.quality} • Audio: ${item.audio_lang} • Subs: ${item.subtitles || 'Multi'} • Seeds: ${item.seeders}`
       };
     });
 
-    res.setHeader('Cache-Control', 'max-age=1800, stale-while-revalidate=3600');
     return res.json({ metas });
   } catch (err) {
     console.error('Error handling catalog request:', err.message);

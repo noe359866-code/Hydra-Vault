@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS hydra_vault (
     -- Detalles técnicos
     quality VARCHAR(20) DEFAULT '1080p',   -- Ej: '1080p', '4K', '720p'
     audio_lang VARCHAR(50) DEFAULT 'Multi',-- Ej: 'Latino', 'Sub Español', 'Jap/Sub'
+    subtitles VARCHAR(50) DEFAULT 'Multi', -- Ej: 'Español', 'Inglés', 'Multi'
     size VARCHAR(20) DEFAULT 'N/D',        -- Ej: '1.4 GB', '450 MB'
     seeders INT DEFAULT 10,
     
@@ -59,6 +60,7 @@ function initMemoryStore() {
         magnet: item.magnet,
         quality: item.quality || '1080p',
         audio_lang: item.audio_lang || 'Multi',
+        subtitles: item.subtitles || 'Multi',
         size: item.size || 'N/D',
         seeders: Number.isInteger(item.seeders) ? item.seeders : 10,
         created_at: new Date()
@@ -77,9 +79,10 @@ function getPool() {
       pool = new Pool({
         connectionString: config.databaseUrl,
         ssl: isLocal ? false : { rejectUnauthorized: false },
-        max: process.env.PG_MAX ? parseInt(process.env.PG_MAX, 10) : 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 8000
+        // One connection per serverless instance avoids multiplying idle DB sessions.
+        max: process.env.PG_MAX ? parseInt(process.env.PG_MAX, 10) : 1,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 6000
       });
 
       pool.on('error', (err) => {
@@ -125,12 +128,12 @@ async function initDb() {
             `INSERT INTO hydra_vault (
               imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
               type, source_platform, title, magnet,
-              quality, audio_lang, size, seeders
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+              quality, audio_lang, subtitles, size, seeders
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
               item.imdb_id, item.tmdb_id, item.anilist_id, item.kitsu_id, item.custom_id,
               item.type, item.source_platform, item.title, item.magnet,
-              item.quality, item.audio_lang, item.size, item.seeders
+              item.quality, item.audio_lang, item.subtitles || 'Multi', item.size, item.seeders
             ]
           );
         }
@@ -246,7 +249,7 @@ async function getEntries({ type, platform, search, page = 1, limit = 50, sort =
 
       const dataSql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, magnet, quality, audio_lang, size, seeders, created_at
+               type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
         FROM hydra_vault
         ${whereClause}
         ${orderBy}
@@ -324,7 +327,7 @@ async function getEntryById(id) {
     try {
       const res = await p.query(
         `SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                type, source_platform, title, magnet, quality, audio_lang, size, seeders, created_at
+                type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
          FROM hydra_vault
          WHERE id = $1`,
         [numId]
@@ -342,7 +345,7 @@ async function getEntryById(id) {
 /**
  * Insert a New Entry into hydra_vault
  * Exact schema adherence:
- * imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id, type, source_platform, title, magnet, quality, audio_lang, size, seeders
+ * imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id, type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders
  */
 async function createEntry(entry) {
   const clean = {
@@ -357,6 +360,7 @@ async function createEntry(entry) {
     magnet: String(entry.magnet || '').trim(),
     quality: entry.quality ? String(entry.quality).trim() : '1080p',
     audio_lang: entry.audio_lang ? String(entry.audio_lang).trim() : 'Multi',
+    subtitles: entry.subtitles ? String(entry.subtitles).trim() : 'Multi',
     size: entry.size ? String(entry.size).trim() : 'N/D',
     seeders: Number.isInteger(parseInt(entry.seeders, 10)) ? parseInt(entry.seeders, 10) : 10
   };
@@ -372,19 +376,19 @@ async function createEntry(entry) {
         INSERT INTO hydra_vault (
           imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
           type, source_platform, title, magnet,
-          quality, audio_lang, size, seeders
+          quality, audio_lang, subtitles, size, seeders
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9,
-          $10, $11, $12, $13
+          $10, $11, $12, $13, $14
         )
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, source_platform, title, magnet, quality, audio_lang, size, seeders, created_at
+                  type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
       `;
       const values = [
         clean.imdb_id, clean.tmdb_id, clean.anilist_id, clean.kitsu_id, clean.custom_id,
         clean.type, clean.source_platform, clean.title, clean.magnet,
-        clean.quality, clean.audio_lang, clean.size, clean.seeders
+        clean.quality, clean.audio_lang, clean.subtitles, clean.size, clean.seeders
       ];
       const res = await p.query(sql, values);
       return res.rows[0];
@@ -424,6 +428,7 @@ async function updateEntry(id, entry) {
     magnet: entry.magnet ? String(entry.magnet).trim() : undefined,
     quality: entry.quality ? String(entry.quality).trim() : undefined,
     audio_lang: entry.audio_lang ? String(entry.audio_lang).trim() : undefined,
+    subtitles: entry.subtitles !== undefined ? (entry.subtitles ? String(entry.subtitles).trim() : null) : undefined,
     size: entry.size ? String(entry.size).trim() : undefined,
     seeders: entry.seeders !== undefined ? parseInt(entry.seeders, 10) : undefined
   };
@@ -448,6 +453,7 @@ async function updateEntry(id, entry) {
         magnet: clean.magnet !== undefined ? clean.magnet : current.magnet,
         quality: clean.quality !== undefined ? clean.quality : current.quality,
         audio_lang: clean.audio_lang !== undefined ? clean.audio_lang : current.audio_lang,
+        subtitles: clean.subtitles !== undefined ? clean.subtitles : current.subtitles,
         size: clean.size !== undefined ? clean.size : current.size,
         seeders: clean.seeders !== undefined ? clean.seeders : current.seeders
       };
@@ -456,15 +462,15 @@ async function updateEntry(id, entry) {
         UPDATE hydra_vault SET
           imdb_id = $1, tmdb_id = $2, anilist_id = $3, kitsu_id = $4, custom_id = $5,
           type = $6, source_platform = $7, title = $8, magnet = $9,
-          quality = $10, audio_lang = $11, size = $12, seeders = $13
-        WHERE id = $14
+          quality = $10, audio_lang = $11, subtitles = $12, size = $13, seeders = $14
+        WHERE id = $15
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, source_platform, title, magnet, quality, audio_lang, size, seeders, created_at
+                  type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
       `;
       const values = [
         merged.imdb_id, merged.tmdb_id, merged.anilist_id, merged.kitsu_id, merged.custom_id,
         merged.type, merged.source_platform, merged.title, merged.magnet,
-        merged.quality, merged.audio_lang, merged.size, merged.seeders,
+        merged.quality, merged.audio_lang, merged.subtitles, merged.size, merged.seeders,
         numId
       ];
 
@@ -569,7 +575,7 @@ async function findStreamsForStremio({ type, id }) {
     try {
       const sql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, magnet, quality, audio_lang, size, seeders, created_at
+               type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
         FROM hydra_vault
         WHERE 
           imdb_id = $1 OR imdb_id = $2
@@ -695,7 +701,7 @@ async function getCatalogItems({ catalogId, type, genre, search, skip = 0, limit
       const sql = `
         SELECT DISTINCT ON (COALESCE(imdb_id, kitsu_id, tmdb_id, custom_id, id::text))
                id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, quality, audio_lang, size, seeders
+               type, source_platform, title, quality, audio_lang, subtitles, size, seeders
         FROM hydra_vault
         ${whereClause}
         ORDER BY COALESCE(imdb_id, kitsu_id, tmdb_id, custom_id, id::text), seeders DESC

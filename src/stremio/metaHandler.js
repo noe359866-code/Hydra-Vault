@@ -4,6 +4,7 @@ const db = require('../db');
  * Handles GET /meta/:type/:id.json requests
  */
 async function handleMetaRequest(req, res) {
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=300');
   const { type, id } = req.params;
   const cleanId = id.replace(/\.json$/, '');
 
@@ -18,7 +19,7 @@ async function handleMetaRequest(req, res) {
     let stremioType = item.type;
     if (stremioType === 'drama') stremioType = 'series';
 
-    const genres = [item.source_platform, item.quality, item.audio_lang].filter(Boolean);
+    const genres = [item.source_platform, item.quality, item.audio_lang, item.subtitles].filter(Boolean);
 
     const meta = {
       id: cleanId,
@@ -27,7 +28,7 @@ async function handleMetaRequest(req, res) {
       genres,
       posterShape: 'regular',
       background: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1920&auto=format&fit=crop',
-      description: `[Hydra Vault] Contenido curado exclusivo.\nPlataforma: ${item.source_platform}\nCalidad: ${item.quality}\nAudio: ${item.audio_lang}\nTamaño: ${item.size}\nSeeders: ${item.seeders}`,
+      description: `[Hydra Vault] Contenido curado exclusivo.\nPlataforma: ${item.source_platform}\nCalidad: ${item.quality}\nAudio: ${item.audio_lang}\nSubtítulos: ${item.subtitles || 'Multi'}\nTamaño: ${item.size}\nSeeders: ${item.seeders}`,
       releaseInfo: new Date(item.created_at || Date.now()).getFullYear().toString()
     };
 
@@ -44,7 +45,6 @@ async function handleMetaRequest(req, res) {
       ];
     }
 
-    res.setHeader('Cache-Control', 'max-age=1800, stale-while-revalidate=3600');
     return res.json({ meta });
   } catch (err) {
     console.error('Error handling meta request:', err.message);

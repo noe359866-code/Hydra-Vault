@@ -1,20 +1,34 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const config = require('./config');
 const stremioRoutes = require('./routes/stremio');
 const apiRoutes = require('./routes/api');
 const vaultHandler = require('../api/vault');
 const adminAddHandler = require('../api/admin/add');
-const { renderLandingPage } = require('./views/landingView');
 const { initDb } = require('./db');
 
 const app = express();
 
-// Initialize DB schema & connection check asynchronously
-initDb().catch(err => {
-  console.warn('Initial DB check notice:', err.message);
-});
+// Delay the database/schema check until a route actually needs the database.
+// This keeps static pages and the Stremio manifest free from DB work on cold starts.
+let dbInitialization = null;
+const databaseFreeApiPaths = new Set(['/api/auth/verify', '/api/vault/parse-magnet']);
+
+function initializeDatabaseForRequest(req, res, next) {
+  const needsDb = /^(?:\/stream\/|\/catalog\/|\/meta\/)/.test(req.path) ||
+    (req.path.startsWith('/api/') && !databaseFreeApiPaths.has(req.path));
+
+  if (!needsDb) return next();
+
+  if (!dbInitialization) {
+    dbInitialization = initDb().catch((err) => {
+      dbInitialization = null;
+      throw err;
+    });
+  }
+
+  dbInitialization.then(() => next(), next);
+}
 
 // Universal CORS configuration
 app.use(cors({
@@ -23,9 +37,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'Range', 'X-Requested-With']
 }));
 
-// Body Parsers
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+// The API accepts small JSON payloads; keep parsing bounded.
+app.use(express.json({ limit: '1mb' }));
 
 // Static Assets
 app.use(express.static(path.join(__dirname, '../public')));
@@ -34,37 +47,22 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.all('/api/vault', vaultHandler);
 app.all('/api/admin/add', adminAddHandler);
 
-// Admin Web UI (Tailwind CSS SPA)
+// Lightweight static pages (also rewritten directly to static files on Vercel).
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));
 });
+app.get('/configure', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// Initialize PostgreSQL only for routes that query it, once per warm instance.
+app.use(initializeDatabaseForRequest);
 
 // Stremio Addon Protocol Routes (/manifest.json, /stream/..., /catalog/..., /meta/...)
 app.use('/', stremioRoutes);
 
 // Admin & CRUD REST API
 app.use('/api', apiRoutes);
-
-// Helper to construct base and manifest URL
-function getBaseUrl(req) {
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.get('host') || `localhost:${config.port}`;
-  return `${protocol}://${host}`;
-}
-
-// Public Landing Page / Configuration Page
-app.get(['/', '/configure'], (req, res) => {
-  const baseUrl = getBaseUrl(req);
-  const manifestUrl = `${baseUrl}/manifest.json`;
-  const html = renderLandingPage({
-    manifestUrl,
-    addonName: config.addon.name,
-    version: config.addon.version,
-    description: config.addon.description
-  });
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(html);
-});
 
 // 404 Fallback for unknown routes
 app.use((req, res) => {

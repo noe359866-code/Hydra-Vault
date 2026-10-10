@@ -27,14 +27,12 @@
   - `/catalog/{type}/{id}.json`: Navegación y filtrado por género, plataforma (Viki, iQiyi, Europa) y buscador integrado.
   - `/meta/{type}/{id}.json`: Metadatos y soporte de reproducción para títulos exclusivos o IDs personalizados.
 - **Base de Datos PostgreSQL (Layerbase):**
-  - Conexión optimizada mediante el cliente oficial `pg` con soporte SSL y pooling para entornos serverless.
-  - Modo fallback en memoria automático para desarrollo local o pruebas sin conexión inmediata.
-- **Panel de Administración Web Integrado (`/admin`):**
-  - Autenticación segura mediante token secreto `ADMIN_SECRET`.
-  - Dashboard con métricas en tiempo real (conteo por tipo, plataforma, promedio de seeders y latencia a PostgreSQL).
-  - **Auto-Inspector de Enlaces Magnet:** analiza enlaces magnet extrayendo BTIH (Hex / Base32), display name, trackers y sugiere automáticamente calidad, idioma y tamaño.
-  - **Simulador Interactivo de Stremio:** permite probar cualquier ID (`tt21344706`, `kitsu:41370:1`, `hydra:1`) y ver la respuesta JSON exacta que recibirá la aplicación Stremio.
-  - Importación masiva (Bulk Import JSON/CSV) y botón para precargar catálogo curado (*Seed*).
+  - Cliente oficial `pg` con SSL y pool limitado por defecto a una conexión por instancia serverless (`PG_MAX` permite ajustarlo).
+  - La inicialización de esquema es bajo demanda; modo memoria disponible en desarrollo sin conexión.
+- **Panel de Administración (`/admin`):**
+  - Formulario responsivo con campos completos y detalles opcionales plegables.
+  - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
+  - Sin sondeos ni llamadas de prueba automáticas: solo se invoca el API al guardar.
 - **Compatibilidad Dual Vercel Serverless / Express:**
   - Despliegue en 1 clic en Vercel vía `api/index.js` y `vercel.json`.
   - O ejecución como servidor independiente Node.js (`npm start`) para Docker o VPS.
@@ -47,7 +45,7 @@
 - **Framework Web:** Express.js 4
 - **Base de Datos:** PostgreSQL con cliente oficial `pg` (`Pool` con reconexión y `rejectUnauthorized: false` para Layerbase/Neon/Supabase)
 - **CORS:** Habilitado para todos los orígenes (`*`) según especificación de addons de Stremio.
-- **Frontend Admin & Landing:** Zero-build Vanilla JS moderno, responsivo con estética dark cyberpunk/streaming.
+- **Frontend Admin & Landing:** páginas estáticas sin build; la portada usa recursos locales y `/admin` usa Tailwind Play CDN.
 
 ---
 
@@ -75,6 +73,7 @@ CREATE TABLE hydra_vault (
     -- Detalles técnicos
     quality VARCHAR(20) DEFAULT '1080p',   -- Ej: '1080p', '4K', '720p'
     audio_lang VARCHAR(50) DEFAULT 'Multi',-- Ej: 'Latino', 'Sub Español', 'Jap/Sub'
+    subtitles VARCHAR(50) DEFAULT 'Multi', -- Ej: 'Español', 'Inglés', 'Multi'
     size VARCHAR(20) DEFAULT 'N/D',        -- Ej: '1.4 GB', '450 MB'
     seeders INT DEFAULT 10,
     
@@ -108,7 +107,7 @@ NODE_ENV=production
 
 ## 🚀 Despliegue en Vercel Serverless
 
-El repositorio incluye `vercel.json` configurado para enrutar todas las peticiones a la función serverless `api/index.js`.
+El repositorio entrega la página pública y `/admin` como archivos estáticos. Solo los endpoints dinámicos (Stremio y API) usan funciones serverless; catálogos, metadatos, streams y `/api/vault` se cachean 60 segundos, y el manifiesto una hora.
 
 ### Pasos para desplegar:
 
@@ -120,6 +119,8 @@ El repositorio incluye `vercel.json` configurado para enrutar todas las peticion
    En la sección **Environment Variables** del proyecto en Vercel, agrega:
    - `LAYERBASE_DATABASE_URL`: Tu URL completa de PostgreSQL Layerbase.
    - `ADMIN_SECRET`: Tu clave secreta administrativa.
+
+   Si agregas o cambias estas variables después del último deploy, inicia un nuevo deploy para que Production las aplique. No compartas sus valores en el chat ni los pongas en el frontend.
 
 3. **Deploy:**
    - Haz clic en **Deploy**. Vercel generará tu URL pública (ejemplo: `https://hydra-vault.vercel.app`).
@@ -166,16 +167,13 @@ El servidor escuchará en `http://localhost:7000`:
 
 ## 🛡️ Panel de Administración Web (`/admin`)
 
-El panel ofrece una interfaz gráfica completa y reactiva:
+El panel está pensado para mantener bajo el consumo de la versión gratuita:
 
-1. **Acceso Seguro:** Ingresa tu `ADMIN_SECRET` para autenticarte. El token queda guardado de forma segura en tu sesión local.
-2. **Dashboard de Métricas:** Visualiza el total de títulos, desglose por tipo (Dramas, Anime, Películas), promedio de seeders y estado de la conexión a Layerbase PostgreSQL con medición de latencia.
-3. **Gestión de Entradas (+ Nueva Entrada / Editar):**
-   - Formulario completo con todos los campos de la tabla `hydra_vault`.
-   - Botón **"Auto-Inspeccionar Magnet"**: pega un enlace magnet y automáticamente se rellenará el título, la calidad inferida (4K/1080p), los subtítulos/idioma y los trackers.
-4. **Importación Masiva (Bulk Import):** Inserta listas en formato JSON para migrar colecciones rápidamente.
-5. **Cargar Ejemplos (Seed Data):** Precarga títulos curados de dramas coreanos y chinos de Viki e iQiyi (*The Glory*, *Love Between Fairy and Devil*, *Crash Landing on You*), animes y clásicos de cine.
-6. **Simulador Stremio Integrado:** Ingresa cualquier IMDb ID (ej: `tt21344706`) o Kitsu ID (`kitsu:41370:1`) y obtén una previsualización visual de cómo se mostrarán las opciones de reproducción en Stremio y el JSON exacto.
+1. Ingresa `ADMIN_SECRET` y completa título, enlace y tipo.
+2. Abre **Más detalles** solo si necesitas cargar calidad, idioma o identificadores.
+3. Pulsa **Guardar contenido**. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
+
+`/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. Tailwind se carga desde su CDN (petición externa al navegador; no es una función de Vercel). El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
 
 ---
 
@@ -190,12 +188,12 @@ Los endpoints protegidos requieren el token `ADMIN_SECRET` mediante cualquiera d
 ---
 
 ### 1. Insertar Contenido en el Vault
-**`POST /api/vault`** *(Protegido)*
+**`POST /api/admin/add`** *(Protegido)*
 
 **Cabeceras:**
 ```http
 Content-Type: application/json
-Authorization: Bearer mi_super_secreto_seguro_2026
+x-admin-secret: <ADMIN_SECRET>
 ```
 
 **Cuerpo (JSON):**
@@ -209,9 +207,10 @@ Authorization: Bearer mi_super_secreto_seguro_2026
   "type": "drama",
   "source_platform": "Viki",
   "title": "The Glory S01 1080p Viki Dual Latino",
-  "magnet": "magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=The+Glory&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337",
+  "magnet": "magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=The+Glory",
   "quality": "1080p",
   "audio_lang": "Latino / Coreano",
+  "subtitles": "Español",
   "size": "14.2 GB",
   "seeders": 85
 }
@@ -220,27 +219,21 @@ Authorization: Bearer mi_super_secreto_seguro_2026
 **Respuesta (201 Created):**
 ```json
 {
-  "message": "Entrada creada exitosamente en Hydra Vault.",
+  "success": true,
+  "message": "Contenido insertado correctamente en Layerbase PostgreSQL.",
   "data": {
     "id": 1,
-    "imdb_id": "tt21344706",
-    "tmdb_id": "136283",
-    "anilist_id": null,
-    "kitsu_id": null,
-    "custom_id": "viki-the-glory-s01",
     "type": "drama",
     "source_platform": "Viki",
     "title": "The Glory S01 1080p Viki Dual Latino",
-    "magnet": "magnet:?xt=urn:btih:...",
     "quality": "1080p",
     "audio_lang": "Latino / Coreano",
+    "subtitles": "Español",
     "size": "14.2 GB",
-    "seeders": 85,
-    "created_at": "2026-10-10T17:00:00.000Z"
+    "seeders": 85
   }
 }
 ```
-
 ---
 
 ### 2. Listar Entradas
@@ -340,8 +333,11 @@ Hydra-Vault/
 ├── api/
 │   └── index.js                 # Punto de entrada para Vercel Serverless
 ├── public/
-│   ├── favicon.svg              # Icono distintivo Hydra Glow
-│   └── styles.css               # Estilos globales complementarios
+│   ├── index.html               # Landing pública estática
+│   ├── admin.html               # Formulario de administración estático
+│   ├── admin.js                 # Envío al API solo al guardar
+│   ├── styles.css               # Estilos locales, sin CDN
+│   └── favicon.svg              # Icono Hydra
 ├── src/
 │   ├── app.js                   # Configuración de Express, CORS y middleware
 │   ├── config.js                # Gestión centralizada de configuración
@@ -356,12 +352,9 @@ Hydra-Vault/
 │   │   ├── streamHandler.js     # Resolución de streams para Stremio
 │   │   ├── catalogHandler.js    # Proveedor de catálogos y filtros
 │   │   └── metaHandler.js       # Proveedor de metadatos
-│   ├── utils/
-│   │   ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
-│   │   └── seedData.js          # Catálogo curado inicial de ejemplo
-│   └── views/
-│       ├── adminView.js         # Panel de Control SPA integrado
-│       └── landingView.js       # Landing page pública de instalación
+│   └── utils/
+│       ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
+│       └── seedData.js          # Catálogo curado inicial de ejemplo
 └── test/
     └── test.js                  # Batería completa de pruebas unitarias y de integración
 ```

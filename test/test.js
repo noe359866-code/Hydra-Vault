@@ -81,6 +81,8 @@ async function runTests() {
       assert(stream.url.startsWith('magnet:?xt=urn:btih:'));
       assert.strictEqual(stream.details.quality, '1080p');
       assert.strictEqual(stream.details.source, 'Viki');
+      assert.strictEqual(stream.details.subtitles, 'Español');
+      assert(stream.title.includes('Subs: Español'));
       assert.strictEqual(res.headers['access-control-allow-origin'], '*');
     });
 
@@ -145,6 +147,7 @@ async function runTests() {
         magnet: 'magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=Twinkling+Watermelon&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337',
         quality: '1080p',
         audio_lang: 'Latino',
+        subtitles: 'Español',
         size: '18.2 GB',
         seeders: 55
       };
@@ -167,6 +170,7 @@ async function runTests() {
       assert.strictEqual(res.body.data.imdb_id, 'tt7777777');
       assert.strictEqual(res.body.data.source_platform, 'Viki');
       assert.strictEqual(res.body.data.quality, '1080p');
+      assert.strictEqual(res.body.data.subtitles, 'Español');
     });
 
     await test('Cloudflare Worker: Queries newly inserted item via GET /api/vault?id=tt7777777', async () => {
@@ -178,16 +182,33 @@ async function runTests() {
       assert(res.body.streams[0].title.includes('[Viki]'));
     });
 
-    // 3. Web Admin Interface: GET /admin
-    await test('Web Admin: GET /admin serves HTML styled with Tailwind CSS', async () => {
+    // 3. Static web pages: no frontend framework or third-party assets.
+    await test('Landing page is served locally without external fonts or scripts', async () => {
+      const res = await request('/');
+      assert.strictEqual(res.statusCode, 200);
+      assert(res.headers['content-type'].includes('text/html'));
+      assert(res.raw.includes('Hydra Vault'));
+      assert(res.raw.includes('/manifest.json'));
+      assert(!res.raw.includes('fonts.googleapis.com'));
+      assert(!res.raw.includes('tailwindcss.com'));
+    });
+
+    await test('Admin page uses Tailwind CDN and includes the complete form', async () => {
       const res = await request('/admin');
       assert.strictEqual(res.statusCode, 200);
       assert(res.headers['content-type'].includes('text/html'));
-      assert(res.raw.includes('tailwindcss.com'));
-      assert(res.raw.includes('HYDRA VAULT'));
-      assert(res.raw.includes('ADMIN_SECRET'));
+      assert(res.raw.includes('Hydra Vault'));
+      assert(res.raw.includes('cdn.tailwindcss.com'));
+      assert(res.raw.includes('Clave de administrador'));
       assert(res.raw.includes('localStorage'));
-      assert(res.raw.includes('/api/admin/add'));
+      assert(res.raw.includes('Subtítulos'));
+      assert(res.raw.includes('custom_id'));
+
+      const script = await request('/admin.js');
+      assert.strictEqual(script.statusCode, 200);
+      assert(script.raw.includes("fetch('/api/admin/add'"));
+      assert(script.raw.includes('localStorage'));
+      assert(script.raw.includes('subtitles: valueOf'));
     });
 
     // 4. Stremio Manifest & Fallback Routes
