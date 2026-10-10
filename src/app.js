@@ -43,8 +43,11 @@ app.use(express.json({ limit: '1mb' }));
 // Static Assets
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Initialize the database before every database-backed endpoint, including serverless-style handlers.
+app.use(initializeDatabaseForRequest);
+
 // Specific Endpoints for Cloudflare Worker & Admin API (matching Vercel serverless files)
-app.all('/api/vault', vaultHandler);
+app.get('/api/vault', vaultHandler);
 app.all('/api/admin/add', adminAddHandler);
 
 // Lightweight static pages (also rewritten directly to static files on Vercel).
@@ -54,9 +57,6 @@ app.get('/admin', (req, res) => {
 app.get('/configure', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
-
-// Initialize PostgreSQL only for routes that query it, once per warm instance.
-app.use(initializeDatabaseForRequest);
 
 // Stremio Addon Protocol Routes (/manifest.json, /stream/..., /catalog/..., /meta/...)
 app.use('/', stremioRoutes);

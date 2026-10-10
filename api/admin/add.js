@@ -4,7 +4,7 @@
  */
 const crypto = require('crypto');
 const config = require('../../src/config');
-const { insertEntry } = require('../../lib/db');
+const db = require('../../src/db');
 
 const ALLOWED_TYPES = new Set(['anime', 'series', 'movie', 'drama']);
 
@@ -79,6 +79,9 @@ module.exports = async (req, res) => {
       kitsu_id: optionalText(body.kitsu_id, 'kitsu_id', 50),
       custom_id: optionalText(body.custom_id, 'custom_id', 100),
       type: type.toLowerCase(),
+      season: body.season === undefined || body.season === '' ? null : Number(body.season),
+      episode: body.episode === undefined || body.episode === '' ? null : Number(body.episode),
+      episode_title: optionalText(body.episode_title, 'episode_title', 300),
       source_platform: optionalText(body.source_platform, 'source_platform', 50) || 'Torrent',
       title,
       magnet,
@@ -89,10 +92,13 @@ module.exports = async (req, res) => {
       seeders
     };
 
-    const insertedRow = await insertEntry(entry);
+    if (entry.season !== null && (!Number.isInteger(entry.season) || entry.season < 0)) return res.status(400).json({ success: false, error: 'season debe ser un entero mayor o igual a cero.' });
+    if (entry.episode !== null && (!Number.isInteger(entry.episode) || entry.episode < 1)) return res.status(400).json({ success: false, error: 'episode debe ser un entero mayor o igual a uno.' });
+    if ((entry.season === null) !== (entry.episode === null) && ['anime', 'series', 'drama'].includes(entry.type)) return res.status(400).json({ success: false, error: 'Para series, dramas y anime debes indicar temporada y episodio juntos.' });
+    const insertedRow = await db.createEntry(entry);
     return res.status(201).json({
       success: true,
-      message: 'Contenido insertado correctamente en Layerbase PostgreSQL.',
+      message: 'Contenido insertado correctamente.',
       data: insertedRow
     });
   } catch (error) {

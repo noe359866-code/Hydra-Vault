@@ -51,6 +51,14 @@ form.addEventListener('submit', async (event) => {
   }
 
   const parsedSeeders = Number.parseInt(valueOf('seeders'), 10);
+  const seasonText = valueOf('season');
+  const episodeText = valueOf('episode');
+  const isEpisodic = ['anime', 'series', 'drama'].includes(valueOf('type'));
+  if ((seasonText === '') !== (episodeText === '') || (isEpisodic && seasonText === '')) {
+    showStatus('Para series, dramas y anime indica temporada y episodio. Para películas deja ambos vacíos.', true);
+    return;
+  }
+
   const payload = {
     imdb_id: valueOf('imdb_id') || null,
     tmdb_id: valueOf('tmdb_id') || null,
@@ -58,6 +66,9 @@ form.addEventListener('submit', async (event) => {
     kitsu_id: valueOf('kitsu_id') || null,
     custom_id: valueOf('custom_id') || null,
     type: valueOf('type'),
+    season: valueOf('season') === '' ? null : Number(valueOf('season')),
+    episode: valueOf('episode') === '' ? null : Number(valueOf('episode')),
+    episode_title: valueOf('episode_title') || null,
     source_platform: valueOf('source_platform'),
     title: valueOf('title'),
     magnet: valueOf('magnet'),

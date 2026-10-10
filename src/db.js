@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS hydra_vault (
     
     -- Metadatos y clasificación
     type VARCHAR(20) NOT NULL,             -- Valores: 'anime', 'series', 'movie', 'drama'
+    season INTEGER CHECK (season IS NULL OR season >= 0),
+    episode INTEGER CHECK (episode IS NULL OR episode >= 1),
+    episode_title TEXT,
     source_platform VARCHAR(50) DEFAULT 'Torrent', -- Valores: 'Torrent', 'Viki', 'iQiyi', 'Direct', etc.
     title TEXT NOT NULL,                   -- Título descriptivo para Stremio
     magnet TEXT NOT NULL,                  -- Enlace Magnet o URL
@@ -38,6 +41,9 @@ CREATE TABLE IF NOT EXISTS hydra_vault (
     
     created_at TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS season INTEGER;
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS episode INTEGER;
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS episode_title TEXT;
 `;
 
 // In-Memory Fallback Store (used when LAYERBASE_DATABASE_URL is not configured)
@@ -55,6 +61,9 @@ function initMemoryStore() {
         kitsu_id: item.kitsu_id || null,
         custom_id: item.custom_id || null,
         type: item.type,
+        season: item.season ?? null,
+        episode: item.episode ?? null,
+        episode_title: item.episode_title ?? null,
         source_platform: item.source_platform || 'Torrent',
         title: item.title,
         magnet: item.magnet,
@@ -127,13 +136,15 @@ async function initDb() {
           await client.query(
             `INSERT INTO hydra_vault (
               imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-              type, source_platform, title, magnet,
+              type, season, episode, episode_title, source_platform, title, magnet,
               quality, audio_lang, subtitles, size, seeders
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
             [
               item.imdb_id, item.tmdb_id, item.anilist_id, item.kitsu_id, item.custom_id,
-              item.type, item.source_platform, item.title, item.magnet,
-              item.quality, item.audio_lang, item.subtitles || 'Multi', item.size, item.seeders
+              item.type, item.season ?? null, item.episode ?? null, item.episode_title ?? null,
+              item.source_platform || 'Torrent', item.title, item.magnet,
+              item.quality || '1080p', item.audio_lang || 'Multi', item.subtitles || 'Multi',
+              item.size || 'N/D', Number.isInteger(item.seeders) ? item.seeders : 10
             ]
           );
         }
@@ -249,7 +260,7 @@ async function getEntries({ type, platform, search, page = 1, limit = 50, sort =
 
       const dataSql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
         FROM hydra_vault
         ${whereClause}
         ${orderBy}
@@ -327,7 +338,7 @@ async function getEntryById(id) {
     try {
       const res = await p.query(
         `SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
          FROM hydra_vault
          WHERE id = $1`,
         [numId]
@@ -355,6 +366,9 @@ async function createEntry(entry) {
     kitsu_id: entry.kitsu_id ? String(entry.kitsu_id).trim() : null,
     custom_id: entry.custom_id ? String(entry.custom_id).trim() : null,
     type: entry.type ? String(entry.type).trim().toLowerCase() : 'movie',
+    season: entry.season === '' || entry.season === undefined || entry.season === null ? null : Number(entry.season),
+    episode: entry.episode === '' || entry.episode === undefined || entry.episode === null ? null : Number(entry.episode),
+    episode_title: entry.episode_title ? String(entry.episode_title).trim() : null,
     source_platform: entry.source_platform ? String(entry.source_platform).trim() : 'Torrent',
     title: String(entry.title || '').trim(),
     magnet: String(entry.magnet || '').trim(),
@@ -368,6 +382,9 @@ async function createEntry(entry) {
   if (!clean.title) throw new Error('title is required');
   if (!clean.magnet) throw new Error('magnet is required');
   if (!clean.type) throw new Error('type is required');
+  if (clean.season !== null && (!Number.isInteger(clean.season) || clean.season < 0)) throw new Error('season must be a non-negative integer');
+  if (clean.episode !== null && (!Number.isInteger(clean.episode) || clean.episode < 1)) throw new Error('episode must be a positive integer');
+  if ((clean.season === null) !== (clean.episode === null) && ['series','drama','anime'].includes(clean.type)) throw new Error('season and episode must be supplied together for episodic content');
 
   const p = getPool();
   if (p && isPgAvailable) {
@@ -375,19 +392,18 @@ async function createEntry(entry) {
       const sql = `
         INSERT INTO hydra_vault (
           imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-          type, source_platform, title, magnet,
+          type, season, episode, episode_title, source_platform, title, magnet,
           quality, audio_lang, subtitles, size, seeders
         ) VALUES (
-          $1, $2, $3, $4, $5,
-          $6, $7, $8, $9,
-          $10, $11, $12, $13, $14
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15, $16, $17
         )
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                  type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
       `;
       const values = [
         clean.imdb_id, clean.tmdb_id, clean.anilist_id, clean.kitsu_id, clean.custom_id,
-        clean.type, clean.source_platform, clean.title, clean.magnet,
+        clean.type, clean.season, clean.episode, clean.episode_title, clean.source_platform, clean.title, clean.magnet,
         clean.quality, clean.audio_lang, clean.subtitles, clean.size, clean.seeders
       ];
       const res = await p.query(sql, values);
@@ -398,7 +414,9 @@ async function createEntry(entry) {
     }
   }
 
-  // Memory Fallback
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing to report an in-memory write as persisted.');
+
+  // Memory Fallback (only when no database URL is configured)
   initMemoryStore();
   const newRow = {
     id: nextMemoryId++,
@@ -423,6 +441,9 @@ async function updateEntry(id, entry) {
     kitsu_id: entry.kitsu_id !== undefined ? (entry.kitsu_id ? String(entry.kitsu_id).trim() : null) : undefined,
     custom_id: entry.custom_id !== undefined ? (entry.custom_id ? String(entry.custom_id).trim() : null) : undefined,
     type: entry.type ? String(entry.type).trim().toLowerCase() : undefined,
+    season: entry.season !== undefined ? (entry.season === null || entry.season === '' ? null : Number(entry.season)) : undefined,
+    episode: entry.episode !== undefined ? (entry.episode === null || entry.episode === '' ? null : Number(entry.episode)) : undefined,
+    episode_title: entry.episode_title !== undefined ? (entry.episode_title ? String(entry.episode_title).trim() : null) : undefined,
     source_platform: entry.source_platform ? String(entry.source_platform).trim() : undefined,
     title: entry.title ? String(entry.title).trim() : undefined,
     magnet: entry.magnet ? String(entry.magnet).trim() : undefined,
@@ -448,6 +469,9 @@ async function updateEntry(id, entry) {
         kitsu_id: clean.kitsu_id !== undefined ? clean.kitsu_id : current.kitsu_id,
         custom_id: clean.custom_id !== undefined ? clean.custom_id : current.custom_id,
         type: clean.type !== undefined ? clean.type : current.type,
+        season: clean.season !== undefined ? clean.season : current.season,
+        episode: clean.episode !== undefined ? clean.episode : current.episode,
+        episode_title: clean.episode_title !== undefined ? clean.episode_title : current.episode_title,
         source_platform: clean.source_platform !== undefined ? clean.source_platform : current.source_platform,
         title: clean.title !== undefined ? clean.title : current.title,
         magnet: clean.magnet !== undefined ? clean.magnet : current.magnet,
@@ -461,15 +485,17 @@ async function updateEntry(id, entry) {
       const sql = `
         UPDATE hydra_vault SET
           imdb_id = $1, tmdb_id = $2, anilist_id = $3, kitsu_id = $4, custom_id = $5,
-          type = $6, source_platform = $7, title = $8, magnet = $9,
-          quality = $10, audio_lang = $11, subtitles = $12, size = $13, seeders = $14
-        WHERE id = $15
+          type = $6, season = $7, episode = $8, episode_title = $9,
+          source_platform = $10, title = $11, magnet = $12,
+          quality = $13, audio_lang = $14, subtitles = $15, size = $16, seeders = $17
+        WHERE id = $18
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                  type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
       `;
       const values = [
         merged.imdb_id, merged.tmdb_id, merged.anilist_id, merged.kitsu_id, merged.custom_id,
-        merged.type, merged.source_platform, merged.title, merged.magnet,
+        merged.type, merged.season, merged.episode, merged.episode_title,
+        merged.source_platform, merged.title, merged.magnet,
         merged.quality, merged.audio_lang, merged.subtitles, merged.size, merged.seeders,
         numId
       ];
@@ -482,7 +508,9 @@ async function updateEntry(id, entry) {
     }
   }
 
-  // Memory Fallback
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing an in-memory update.');
+
+  // Memory Fallback (only when no database URL is configured)
   initMemoryStore();
   const idx = memoryStore.findIndex(e => e.id === numId);
   if (idx === -1) return null;
@@ -511,6 +539,8 @@ async function deleteEntry(id) {
       throw err;
     }
   }
+
+  if (p) throw new Error('PostgreSQL is configured but unavailable; refusing an in-memory delete.');
 
   initMemoryStore();
   const idx = memoryStore.findIndex(e => e.id === numId);
@@ -575,7 +605,7 @@ async function findStreamsForStremio({ type, id }) {
     try {
       const sql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
         FROM hydra_vault
         WHERE 
           imdb_id = $1 OR imdb_id = $2
@@ -593,7 +623,8 @@ async function findStreamsForStremio({ type, id }) {
 
       // If season & episode specified, filter or score results matching episode
       if (season !== null && episode !== null && rows.length > 0) {
-        rows = filterAndSortByEpisode(rows, season, episode);
+        const exact = rows.filter(row => Number(row.season) === season && Number(row.episode) === episode);
+        rows = exact.length ? exact : filterAndSortByEpisode(rows, season, episode);
       } else if (episode !== null && rows.length > 0) {
         rows = filterAndSortByEpisode(rows, 1, episode);
       }
@@ -618,7 +649,8 @@ async function findStreamsForStremio({ type, id }) {
   });
 
   if (season !== null && episode !== null && matches.length > 0) {
-    matches = filterAndSortByEpisode(matches, season, episode);
+    const exact = matches.filter(row => Number(row.season) === season && Number(row.episode) === episode);
+    matches = exact.length ? exact : filterAndSortByEpisode(matches, season, episode);
   } else if (episode !== null && matches.length > 0) {
     matches = filterAndSortByEpisode(matches, 1, episode);
   }

@@ -142,6 +142,9 @@ async function runTests() {
         kitsu_id: '98765',
         custom_id: 'viki-test-kdrama',
         type: 'drama',
+        season: 1,
+        episode: 3,
+        episode_title: 'Prueba episodio tres',
         source_platform: 'Viki',
         title: 'Twinkling Watermelon S01 1080p Viki Latino',
         magnet: 'magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=Twinkling+Watermelon&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337',
@@ -171,6 +174,14 @@ async function runTests() {
       assert.strictEqual(res.body.data.source_platform, 'Viki');
       assert.strictEqual(res.body.data.quality, '1080p');
       assert.strictEqual(res.body.data.subtitles, 'Español');
+      assert.strictEqual(res.body.data.season, 1);
+      assert.strictEqual(res.body.data.episode, 3);
+      assert.strictEqual(res.body.data.episode_title, 'Prueba episodio tres');
+    });
+
+    await test('CRUD route: POST /api/vault is not intercepted by public GET handler', async () => {
+      const res = await request('/api/vault', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: { title: 'Unauthorized test', type: 'movie', magnet: 'magnet:?xt=urn:btih:0000000000000000000000000000000000000000' } });
+      assert.strictEqual(res.statusCode, 401);
     });
 
     await test('Cloudflare Worker: Queries newly inserted item via GET /api/vault?id=tt7777777', async () => {
@@ -180,6 +191,20 @@ async function runTests() {
       assert.strictEqual(res.body.streams.length, 1);
       assert(res.body.streams[0].title.includes('Twinkling Watermelon'));
       assert(res.body.streams[0].title.includes('[Viki]'));
+    });
+
+    await test('Stremio: stored season and episode resolve to the correct stream', async () => {
+      const res = await request('/stream/series/tt7777777:1:3.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert(Array.isArray(res.body.streams));
+      assert(res.body.streams.some(stream => stream.title.includes('Twinkling Watermelon')));
+    });
+
+    await test('Stremio: meta exposes the stored season and episode', async () => {
+      const res = await request('/meta/series/tt7777777.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert(Array.isArray(res.body.meta.videos));
+      assert(res.body.meta.videos.some(video => video.season === 1 && video.episode === 3));
     });
 
     // 3. Static web pages: no frontend framework or third-party assets.

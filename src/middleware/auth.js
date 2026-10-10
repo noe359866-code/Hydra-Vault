@@ -18,22 +18,6 @@ function extractToken(req) {
     return String(req.headers['x-admin-secret']).trim();
   }
 
-  // 3. Query params: ?secret=... or ?token=...
-  if (req.query && (req.query.secret || req.query.token)) {
-    return String(req.query.secret || req.query.token).trim();
-  }
-
-  // 4. Cookie: admin_secret=...
-  if (req.headers.cookie) {
-    const cookies = req.headers.cookie.split(';');
-    for (const c of cookies) {
-      const [key, val] = c.trim().split('=');
-      if (key === 'admin_secret') {
-        return decodeURIComponent(val);
-      }
-    }
-  }
-
   return null;
 }
 
@@ -41,8 +25,12 @@ function extractToken(req) {
  * Verifies if the candidate token matches the configured ADMIN_SECRET
  */
 function verifySecret(candidateToken) {
-  if (!candidateToken || typeof candidateToken !== 'string') return false;
-  return candidateToken.trim() === config.adminSecret.trim();
+  const expected = config.adminSecret;
+  if (typeof candidateToken !== 'string' || !candidateToken || typeof expected !== 'string' || !expected) return false;
+  const crypto = require('crypto');
+  const candidate = Buffer.from(candidateToken.trim(), 'utf8');
+  const configured = Buffer.from(expected.trim(), 'utf8');
+  return candidate.length === configured.length && crypto.timingSafeEqual(candidate, configured);
 }
 
 /**
