@@ -1,7 +1,6 @@
 /**
  * Jackett Torznab integration.
- * Requires JACKETT_URL and JACKETT_API_KEY; indexers stay on the server.
- * Searches are read-only and time-bounded to protect serverless runtimes.
+ * Requires JACKETT_URL and JACKETT_API_KEY; credentials never leave the server.
  */
 const config = require('../config');
 
@@ -24,7 +23,7 @@ function tagValue(xml, tag) {
 
 function attrValue(xml, name) {
   const safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = xml.match(new RegExp('\\b' + safe + '=["\\']([^"\\']*)["\\']', 'i'));
+  const match = xml.match(new RegExp("\\b" + safe + "=[\"']([^\"']*)[\"']", 'i'));
   return match ? decodeXml(match[1]) : '';
 }
 
@@ -33,20 +32,22 @@ function parseItems(xml) {
   const matches = String(xml).match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
   for (const item of matches) {
     const title = tagValue(item, 'title');
-    const link = tagValue(item, 'link') || attrValue((item.match(/<enclosure\b[^>]*>/i) || [''])[0], 'url');
+    const enclosure = (item.match(/<enclosure\b[^>]*>/i) || [''])[0];
+    const link = tagValue(item, 'link') || attrValue(enclosure, 'url');
     const magnet = link.startsWith('magnet:?') ? link : (attrValue(item, 'magneturl') || '');
-    const infoHash = (attrValue(item, 'infohash') || (magnet.match(/urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i) || [])[1] || '').toLowerCase();
-    const seeders = Number(attrValue(item, 'seeders') || (item.match(/<torznab:attr\b[^>]*name=["']seeders["'][^>]*value=["'](\d+)/i) || [])[1] || 0);
-    const size = Number(attrValue(item, 'size') || (item.match(/<torznab:attr\b[^>]*name=["']size["'][^>]*value=["'](\d+)/i) || [])[1] || 0);
+    const hashMatch = magnet.match(/urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i);
+    const infoHash = (attrValue(item, 'infohash') || (hashMatch && hashMatch[1]) || '').toLowerCase();
+    const seedersMatch = item.match(/<torznab:attr\b[^>]*name=["']seeders["'][^>]*value=["'](\d+)/i);
+    const sizeMatch = item.match(/<torznab:attr\b[^>]*name=["']size["'][^>]*value=["'](\d+)/i);
+    const seeders = Number(attrValue(item, 'seeders') || (seedersMatch && seedersMatch[1]) || 0);
+    const size = Number(attrValue(item, 'size') || (sizeMatch && sizeMatch[1]) || 0);
     const qualityMatch = title.match(/\b(2160p|4k|1080p|720p|480p)\b/i);
     if (!title || (!magnet && !infoHash)) continue;
     items.push({
-      title,
-      magnet,
-      infoHash,
+      title, magnet, infoHash,
       seeders: Number.isFinite(seeders) ? seeders : 0,
       size,
-      quality: qualityMatch ? qualityMatch[1].toUpperCase() === '2160P' ? '4K' : qualityMatch[1] : 'Unknown'
+      quality: qualityMatch ? (/^(2160p|4k)$/i.test(qualityMatch[1]) ? '4K' : qualityMatch[1]) : 'Unknown'
     });
     if (items.length >= MAX_RESULTS) break;
   }
@@ -77,13 +78,11 @@ async function searchJackett({ id, type, season, episode, title } = {}) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
-      method: 'GET',
       headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
       signal: controller.signal
     });
     if (!response.ok) throw new Error('Jackett returned HTTP ' + response.status);
-    const xml = await response.text();
-    return parseItems(xml).map(item => ({
+    return parseItems(await response.text()).map(item => ({
       ...item,
       source_platform: 'Jackett',
       audio_lang: /\b(latino|dual|multi|spanish|español)\b/i.test(item.title) ? 'Detectado en título' : 'No especificado',
