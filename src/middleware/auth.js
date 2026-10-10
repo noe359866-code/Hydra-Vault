@@ -25,8 +25,12 @@ function extractToken(req) {
  * Verifies if the candidate token matches the configured ADMIN_SECRET
  */
 function verifySecret(candidateToken) {
-  if (!candidateToken || typeof candidateToken !== 'string') return false;
-  return candidateToken.trim() === config.adminSecret.trim();
+  const expected = config.adminSecret;
+  if (typeof candidateToken !== 'string' || !candidateToken || typeof expected !== 'string' || !expected) return false;
+  const crypto = require('crypto');
+  const candidate = Buffer.from(candidateToken.trim(), 'utf8');
+  const configured = Buffer.from(expected.trim(), 'utf8');
+  return candidate.length === configured.length && crypto.timingSafeEqual(candidate, configured);
 }
 
 /**
