@@ -10,9 +10,11 @@ const config = {
   adminSecret: process.env.ADMIN_SECRET || (isProduction ? '' : 'hydra-dev-secret-2026'),
   hasCustomSecret: Boolean(process.env.ADMIN_SECRET),
   jackett: {
-    // Example: http://jackett:9117 or a private HTTPS endpoint.
+    // Public HTTPS hostname protected by Cloudflare Access; never expose Jackett openly.
     url: process.env.JACKETT_URL || '',
-    apiKey: process.env.JACKETT_API_KEY || ''
+    apiKey: process.env.JACKETT_API_KEY || '',
+    accessClientId: process.env.JACKETT_ACCESS_CLIENT_ID || '',
+    accessClientSecret: process.env.JACKETT_ACCESS_CLIENT_SECRET || ''
   },
   addon: {
     id: 'community.hydra.torrents',
