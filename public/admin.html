@@ -46,6 +46,12 @@
           <input id="title" type="text" maxlength="1000" required placeholder="Ej.: The Glory S01 1080p Viki Dual Latino" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
         </div>
 
+        <div id="episode-fields" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div><label for="season" class="mb-1.5 block text-sm font-semibold">Temporada</label><input id="season" type="number" min="0" step="1" placeholder="1" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
+          <div><label for="episode" class="mb-1.5 block text-sm font-semibold">Episodio / capítulo</label><input id="episode" type="number" min="1" step="1" placeholder="3" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
+          <div><label for="episode_title" class="mb-1.5 block text-sm font-semibold">Título del episodio</label><input id="episode_title" type="text" maxlength="300" placeholder="Ej. La llegada" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
+          <p class="sm:col-span-3 text-xs text-slate-500">Para películas, deja estos campos vacíos. Para series, dramas y anime, indica temporada y episodio juntos.</p>
+        </div>
         <div>
           <label for="magnet" class="mb-1.5 block text-sm font-semibold">Enlace magnet o URL *</label>
           <textarea id="magnet" rows="3" required placeholder="magnet:?xt=urn:btih:… o https://…" class="w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"></textarea>
