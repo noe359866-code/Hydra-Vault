@@ -289,6 +289,34 @@ async function runTests() {
       assert.strictEqual(otherEpisode.statusCode, 201);
     });
 
+    await test('Admin API: same link may repeat as another version (different audio/subs/quality)', async () => {
+      const base = { title: 'Version Show S01E01', type: 'series', imdb_id: 'tt7770001', season: 1, episode: 1, magnet: MAGNET('bc') };
+
+      const v1 = await addEntry({ ...base, audio_lang: 'Latino', subtitles: 'Español' });
+      assert.strictEqual(v1.statusCode, 201);
+
+      // El mismo enlace y episodio con OTRO audio/subs → otra versión, se permite.
+      const v2 = await addEntry({ ...base, title: 'Version Show S01E01 Dual', audio_lang: 'Dual Audio', subtitles: 'Español / Inglés' });
+      assert.strictEqual(v2.statusCode, 201);
+
+      // El mismo enlace y episodio con la MISMA versión pero otra calidad → también se permite.
+      const v3 = await addEntry({ ...base, title: 'Version Show S01E01 Remux', quality: 'Remux', audio_lang: 'Latino', subtitles: 'Español' });
+      assert.strictEqual(v3.statusCode, 201);
+
+      // La versión exacta repetida (todo igual) sigue bloqueada para cortar el doble clic.
+      const again = await addEntry({ ...base, audio_lang: 'Latino', subtitles: 'Español' });
+      assert.strictEqual(again.statusCode, 409);
+      assert(again.body.error.includes('versión'));
+
+      // Las 3 versiones conviven como streams del mismo episodio en Stremio.
+      const stream = await request('/stream/series/tt7770001:1:1.json');
+      assert.strictEqual(stream.body.streams.length, 3);
+
+      // El catálogo sigue mostrando el título una sola vez.
+      const catalog = await request('/catalog/series/hydra_series.json');
+      assert.strictEqual(catalog.body.metas.filter(m => m.id === 'tt7770001').length, 1);
+    });
+
     // 2b. Gestión de datos: listar/buscar y eliminar los registros seleccionados.
     await test('Admin API: GET /api/admin/list requires x-admin-secret', async () => {
       const res = await request('/api/admin/list');

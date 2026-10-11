@@ -193,11 +193,17 @@ function sameNullable(a, b) {
 }
 
 /**
- * Busca un registro idéntico (mismo enlace y mismo episodio) para evitar duplicados por doble clic.
+ * Busca un registro idéntico (mismo enlace, mismo episodio y misma versión técnica:
+ * calidad, audio y subtítulos) para evitar duplicados por doble clic.
+ * El mismo enlace SÍ puede repetirse si cambia el audio, los subtítulos o la calidad
+ * (cada uno cuenta como una versión distinta del mismo episodio).
  */
-async function findDuplicate({ magnet, season = null, episode = null }) {
+async function findDuplicate({ magnet, season = null, episode = null, quality = null, audio_lang = null, subtitles = null }) {
   const cleanMagnet = cleanText(magnet);
   if (!cleanMagnet) return null;
+  const cleanQuality = cleanText(quality);
+  const cleanAudio = cleanText(audio_lang);
+  const cleanSubs = cleanText(subtitles);
   const p = getPool();
   if (p) {
     await ensureReady();
@@ -206,14 +212,20 @@ async function findDuplicate({ magnet, season = null, episode = null }) {
        WHERE md5(magnet) = md5($1) AND magnet = $1
          AND season IS NOT DISTINCT FROM $2::integer
          AND episode IS NOT DISTINCT FROM $3::integer
+         AND quality IS NOT DISTINCT FROM $4
+         AND audio_lang IS NOT DISTINCT FROM $5
+         AND subtitles IS NOT DISTINCT FROM $6
        LIMIT 1`,
-      [cleanMagnet, season, episode]
+      [cleanMagnet, season, episode, cleanQuality, cleanAudio, cleanSubs]
     );
     return res.rows[0] || null;
   }
   initMemoryStore();
   return memoryStore.find(row =>
-    row.magnet === cleanMagnet && sameNullable(row.season, season) && sameNullable(row.episode, episode)
+    row.magnet === cleanMagnet && sameNullable(row.season, season) && sameNullable(row.episode, episode) &&
+    (row.quality ?? null) === cleanQuality &&
+    (row.audio_lang ?? null) === cleanAudio &&
+    (row.subtitles ?? null) === cleanSubs
   ) || null;
 }
 

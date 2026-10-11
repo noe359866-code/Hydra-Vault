@@ -126,7 +126,11 @@ module.exports = async (req, res) => {
 
     const duplicate = await db.findDuplicate(entry);
     if (duplicate) {
-      return res.status(409).json({ success: false, error: 'Este enlace ya está guardado para ese mismo episodio.', data: duplicate });
+      return res.status(409).json({
+        success: false,
+        error: 'Este enlace ya está guardado para ese mismo episodio con la misma calidad, audio y subtítulos. Para guardarlo como otra versión, cambia el audio, los subtítulos o la calidad.',
+        data: duplicate
+      });
     }
 
     const insertedRow = await db.createEntry(entry, { strictEpisodes: true });

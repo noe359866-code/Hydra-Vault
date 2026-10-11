@@ -35,7 +35,7 @@
   - IDs de IMDb, Kitsu, TMDb y AniList aceptan la URL completa de la ficha; aviso si falta un ID.
   - Recuerda tus últimas opciones y muestra los guardados recientes (en el navegador, sin llamadas extra).
   - Sección **Tus datos**: busca entre lo guardado, filtra por tipo, selecciona con casillas (o *Seleccionar todo*) y elimina uno o varios registros a la vez; cada fila tiene su botón *Eliminar* individual y todo pide confirmación antes de borrar.
-  - Evita duplicados (mismo enlace y mismo episodio → `409`).
+  - Evita duplicados exactos (mismo enlace, episodio, calidad, audio y subtítulos → `409`), pero permite **versiones**: el mismo episodio/película se puede repetir cambiando el audio, los subtítulos o la calidad (p. ej. *Latino* y *Dual Audio*).
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
   - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar o gestionar datos.
 - **Compatibilidad Dual Vercel Serverless / Express:**
@@ -187,6 +187,7 @@ El panel está pensado para mantener bajo el consumo de la versión gratuita:
    El detector del magnet reconoce estos idiomas en el `dn` (`Inglés`/`Eng`, `Chino`/`CHS`/`Mandarin`, `Polaco`/`Polish`/`Lektor`, `Portugués`/`Dublado`, `Multi`, `Jap/Sub`…) y separa el idioma del audio de las marcas de subtítulos (`Sub Eng`, `Eng Sub`, `Multi Sub (Esp/Eng/Chn)`), que rellenan el campo *Subtítulos*.
 4. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
 5. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
+   Puedes **repetir el mismo título o episodio** las veces que quieras: cada guardado con un **audio, subtítulos o calidad distinto** se guarda como una versión más (p. ej. el mismo episodio en *Latino* y en *Dual Audio / Sub Esp*). En Stremio aparecen todos como streams separados con su audio y subtítulos en la ficha. Solo se bloquea la repetición exacta (todo igual), típica del doble clic.
 6. En **Tus datos** (al final del panel) ves todo lo guardado en la base de datos: busca por título/enlace/ID o filtra por tipo, marca los registros con las casillas (o *Seleccionar todo*) y pulsa **Eliminar seleccionados** — o elimina de uno en uno con el botón *Eliminar* de cada fila. Siempre se pide confirmación antes de borrar, y la lista indica cuántos registros hay y cuáles están marcados.
 7. El navegador contacta al servidor solo para guardar (`POST /api/admin/add`), listar (`GET /api/admin/list`) y eliminar (`POST /api/admin/delete`); no consulta métricas ni realiza pruebas automáticas.
 
@@ -227,6 +228,8 @@ Reglas de `season` / `episode` según `type`:
 | `movie` | se ignora (`null`) | se ignora (`null`) | — |
 | `series`, `drama` | obligatorio (≥ 0) | obligatorio (≥ 1) | `T1 · E03` |
 | `anime` | opcional | obligatorio — capítulo (≥ 1) | `Cap. 12` / `T2 · Cap. 05` |
+
+**Versiones:** el mismo enlace puede guardarse varias veces para el mismo episodio siempre que cambie `audio_lang`, `subtitles` o `quality` (cada uno es una versión distinta: *Latino*, *Dual Audio*, *Remux*…). Solo se responde `409` cuando enlace, episodio, calidad, audio y subtítulos son exactamente iguales (doble clic).
 
 ### Gestionar datos (listar y eliminar)
 
@@ -316,7 +319,7 @@ Valida:
 - Validez del protocolo Stremio v3 (`manifest.json`, stream resolution, catalog metas).
 - Seguridad del guardado (`401` y `201`) y reglas de temporada/episodio/capítulo por tipo.
 - Que cada episodio de serie y cada capítulo de anime (IMDb y Kitsu) devuelva solo su propio stream.
-- Catálogo agrupado (un elemento por título, nombre limpio, póster real), IDs desde URL y duplicados (`409`).
+- Catálogo agrupado (un elemento por título, nombre limpio, póster real), IDs desde URL y duplicados exactos (`409`), permitiendo versiones del mismo episodio con otro audio/subtítulos/calidad.
 
 Para probar contra PostgreSQL real: `LAYERBASE_DATABASE_URL=postgres://… SEED_DEMO_DATA=true npm test` (usa una base vacía de pruebas).
 - Estricta correspondencia con las columnas de `hydra_vault`.
