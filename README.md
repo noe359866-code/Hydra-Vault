@@ -135,6 +135,31 @@ docker compose up -d
 
 Solo el puerto `7000` (el addon) necesita estar público; Prowlarr permanece detrás del VPS y el addon le habla por la red interna (`http://prowlarr:9696`).
 
+### Tu Prowlarr de localhost (caso más común)
+
+Si ya tienes Prowlarr corriendo en tu máquina (`http://localhost:9696`), es un plug & play:
+
+1. En Prowlarr: **Settings → General → API Key** (o `grep ApiKey ~/.config/Prowlarr/config.xml` / `cat /config/config.xml` en Docker).
+2. En el `.env` de Hydra-Vault solo necesitas la key — la URL se asume sola:
+
+```bash
+PROWLARR_API_KEY=tu_api_key_de_prowlarr
+# PROWLARR_URL=http://localhost:9696   # opcional: este es el valor por defecto
+```
+
+3. Comprueba la conexión (ping + búsqueda de prueba):
+
+```bash
+npm run prowlarr:check            # búsqueda de prueba "test"
+npm run prowlarr:check -- glory   # con tu propio query
+```
+
+4. `npm start` y abre en Stremio un título que no esté curado a mano: se auto-llenará solo.
+
+> ⚠️ `localhost` solo funciona si el addon corre **en la misma máquina** que Prowlarr (modo `npm start` local, o ambos en el mismo Docker Compose). Si despliegas el addon en Vercel, expón tu Prowlarr con un túnel (Cloudflare Tunnel / Tailscale) y apunta `PROWLARR_URL` a ese endpoint — nunca lo dejes expuesto en claro a internet.
+
+También puedes verificar el estado en cualquier momento con `GET /api/health`: incluye `prowlarr: { configured, connected, latencyMs, instance }` (nunca expone la API key).
+
 ### Alternativa: Vercel + Prowlarr en tu red
 
 Si prefieres mantener el addon en Vercel, ejecuta Prowlarr en cualquier máquina siempre encendida (VPS, NAS, Raspberry Pi) y expón su API por **túnel (Cloudflare Tunnel / Tailscale)** — nunca sin TLS ni autenticación extra. Configura `PROWLARR_URL` hacia ese endpoint. Aun así, recomendamos el stack Docker: más simple y sin dependencias cruzadas.
@@ -168,8 +193,8 @@ PORT=7000
 NODE_ENV=production
 
 # Prowlarr (opcional): auto-llenado de torrents bajo demanda
-PROWLARR_URL=http://prowlarr:9696        # vacío = desactivado
 PROWLARR_API_KEY=tu_api_key_de_prowlarr
+PROWLARR_URL=http://localhost:9696        # opcional: por defecto localhost si hay API key
 PROWLARR_TIMEOUT_MS=8000                 # máx. espera de /stream antes de responder
 PROWLARR_GRACE_MS=8000                   # margen extra para la búsqueda en background
 PROWLARR_MIN_SEEDERS=0                   # ignora resultados con menos seeders
@@ -408,6 +433,8 @@ Hydra-Vault/
 ├── package.json                 # Dependencias y scripts de ejecución
 ├── server.js                    # Servidor Express independiente (0.0.0.0)
 ├── vercel.json                  # Configuración de rutas y rewrites de Vercel
+├── scripts/
+│   └── check-prowlarr.js        # Diagnóstico de conexión con tu Prowlarr
 ├── api/
 │   └── index.js                 # Punto de entrada para Vercel Serverless
 ├── public/

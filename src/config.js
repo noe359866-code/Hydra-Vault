@@ -12,7 +12,8 @@ const config = {
   
   // Prowlarr auto-fill (búsqueda bajo demanda cuando Stremio pide algo que no está en la BD)
   prowlarr: {
-    url: (process.env.PROWLARR_URL || '').trim().replace(/\/+$/, ''),
+    // Si defines la API key sin URL, se asume Prowlarr local en http://localhost:9696
+    url: (process.env.PROWLARR_URL || ((process.env.PROWLARR_API_KEY || '').trim() ? 'http://localhost:9696' : '')).trim().replace(/\/+$/, ''),
     apiKey: (process.env.PROWLARR_API_KEY || '').trim(),
     // Máximo de ms que /stream espera una búsqueda antes de responder (la búsqueda sigue en background)
     timeoutMs: parseInt(process.env.PROWLARR_TIMEOUT_MS || '8000', 10),

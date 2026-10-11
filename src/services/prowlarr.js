@@ -20,6 +20,58 @@ function isConfigured() {
   return Boolean(config.prowlarr.url && config.prowlarr.apiKey);
 }
 
+/**
+ * Estado de la conexión con Prowlarr (para /api/health y el script de comprobación).
+ * Nunca devuelve la API key.
+ */
+async function checkHealth(opts = {}) {
+  if (!isConfigured()) {
+    return {
+      configured: false,
+      connected: false,
+      message: 'Prowlarr no configurado (define PROWLARR_API_KEY; opcionalmente PROWLARR_URL)'
+    };
+  }
+
+  const fetchImpl = opts.fetchImpl || global.fetch;
+  const timeoutMs = opts.timeoutMs || 2000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const start = Date.now();
+
+  try {
+    const res = await fetchImpl(`${config.prowlarr.url}/api/v1/system/status`, {
+      method: 'GET',
+      headers: {
+        'X-Api-Key': config.prowlarr.apiKey,
+        'Accept': 'application/json'
+      },
+      signal: controller.signal
+    });
+    const latencyMs = Date.now() - start;
+    if (!res.ok) {
+      return { configured: true, connected: false, latencyMs, error: `HTTP ${res.status}` };
+    }
+    const data = await res.json().catch(() => null);
+    return {
+      configured: true,
+      connected: true,
+      latencyMs,
+      instance: (data && (data.instanceName || data.appName)) || 'Prowlarr',
+      version: (data && data.version) || null
+    };
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      latencyMs: Date.now() - start,
+      error: err.name === 'AbortError' ? `timeout tras ${timeoutMs}ms` : err.message
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function validInfoHash(value) {
   const hash = String(value || '').trim().toLowerCase();
   return /^[a-f0-9]{40}$/.test(hash) ? hash : null;
@@ -328,6 +380,7 @@ function toVaultEntries(results, ctx) {
 
 module.exports = {
   isConfigured,
+  checkHealth,
   buildSearchFromStreamId,
   buildAnimeQuery,
   searchProwlarr,

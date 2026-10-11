@@ -77,6 +77,16 @@ async function runTests() {
   // Mock de Prowlarr: simula /api/v1/search con resultados deterministas
   function handleMockProwlarr(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
+    if (url.pathname === '/api/v1/system/status') {
+      if (req.headers['x-api-key'] !== 'test-prowlarr-key') {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end('{"error":"unauthorized"}');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ appName: 'Prowlarr', instanceName: 'HydraMock', version: '1.2.3' }));
+      return;
+    }
     if (url.pathname !== '/api/v1/search') {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end('{"error":"not found"}');
@@ -397,6 +407,39 @@ async function runTests() {
       const fail = async () => { throw new Error('network down'); };
       const t3 = await resolveExternalTitle({ kind: 'kitsu', externalId: '999' }, { fetchImpl: fail, useCache: false });
       assert.strictEqual(t3, null);
+    });
+
+    await test('Config: PROWLARR_API_KEY sin URL asume Prowlarr en localhost:9696', () => {
+      const configPath = require.resolve('../src/config');
+      const savedUrl = process.env.PROWLARR_URL;
+      const savedKey = process.env.PROWLARR_API_KEY;
+
+      delete process.env.PROWLARR_URL;
+      process.env.PROWLARR_API_KEY = 'abc123';
+      delete require.cache[configPath];
+      const withKey = require('../src/config');
+      assert.strictEqual(withKey.prowlarr.url, 'http://localhost:9696');
+
+      delete process.env.PROWLARR_API_KEY;
+      delete require.cache[configPath];
+      const withoutKey = require('../src/config');
+      assert.strictEqual(withoutKey.prowlarr.url, '');
+
+      // Restaurar entorno de pruebas y snapshot de config
+      process.env.PROWLARR_URL = savedUrl;
+      process.env.PROWLARR_API_KEY = savedKey;
+      delete require.cache[configPath];
+      require('../src/config');
+    });
+
+    await test('Health: reporta estado de Prowlarr sin exponer la API key', async () => {
+      const res = await request('/api/health');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.prowlarr.configured, true);
+      assert.strictEqual(res.body.prowlarr.connected, true);
+      assert.strictEqual(res.body.prowlarr.instance, 'HydraMock');
+      assert(typeof res.body.prowlarr.latencyMs === 'number');
+      assert(!res.raw.includes('test-prowlarr-key'));
     });
 
     await test('Prowlarr: /stream con id desconocido auto-llena la BD y devuelve streams', async () => {

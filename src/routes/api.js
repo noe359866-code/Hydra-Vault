@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const prowlarr = require('../services/prowlarr');
 const { requireAdminAuth, verifySecret, extractToken } = require('../middleware/auth');
 const { parseMagnet, formatStremioStream } = require('../utils/magnet');
 
@@ -10,8 +11,10 @@ const { parseMagnet, formatStremioStream } = require('../utils/magnet');
 router.get('/health', async (req, res) => {
   try {
     const health = await db.checkHealth();
+    const prowlarrHealth = await prowlarr.checkHealth();
     res.json({
       ...health,
+      prowlarr: prowlarrHealth,
       timestamp: new Date().toISOString(),
       uptime: process.uptime()
     });
