@@ -1,0 +1,48 @@
+# Stack recomendado: Hydra-Vault + Prowlarr en un VPS con Docker Compose.
+# Prowlarr NO se expone a internet por defecto (solo la red interna del compose);
+# usa un túnel SSH si necesitas su UI: ssh -L 9696:localhost:9696 usuario@vps
+#
+#   cp .env.example .env   # completa ADMIN_SECRET, LAYERBASE_DATABASE_URL y PROWLARR_API_KEY
+#   docker compose up -d --build
+#
+# Después, en la UI de Prowlarr (vía túnel SSH): añade tus indexers y
+# copia su API Key (Settings > General) a PROWLARR_API_KEY en .env.
+# Obtén la API Key de Prowlarr con:
+#   docker compose exec prowlarr cat /config/config.xml | grep -i apikey
+
+services:
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: hydra-prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Guatemala
+    volumes:
+      - prowlarr_config:/config
+    ports:
+      # Solo loopback: quita "127.0.0.1:" si necesitas acceso remoto directo (no recomendado)
+      - "127.0.0.1:9696:9696"
+    restart: unless-stopped
+
+  hydra-vault:
+    build: .
+    container_name: hydra-vault
+    depends_on:
+      - prowlarr
+    environment:
+      - PORT=7000
+      - NODE_ENV=production
+      - LAYERBASE_DATABASE_URL=${LAYERBASE_DATABASE_URL}
+      - ADMIN_SECRET=${ADMIN_SECRET}
+      - PROWLARR_URL=http://prowlarr:9696
+      - PROWLARR_API_KEY=${PROWLARR_API_KEY}
+      - PROWLARR_TIMEOUT_MS=${PROWLARR_TIMEOUT_MS:-8000}
+      - PROWLARR_MIN_SEEDERS=${PROWLARR_MIN_SEEDERS:-0}
+      - PROWLARR_MAX_RESULTS=${PROWLARR_MAX_RESULTS:-12}
+    ports:
+      - "7000:7000"
+    restart: unless-stopped
+
+volumes:
+  prowlarr_config:

@@ -139,6 +139,20 @@ function parseMagnet(magnetStr) {
 }
 
 /**
+ * Builds a standard magnet URI from a BTIH infohash + display name
+ */
+function buildMagnet(infoHash, dn, trackers = DEFAULT_TRACKERS) {
+  const hash = String(infoHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(hash)) return null;
+  let magnet = `magnet:?xt=urn:btih:${hash}`;
+  if (dn) magnet += `&dn=${encodeURIComponent(String(dn))}`;
+  for (const tr of trackers || []) {
+    magnet += `&tr=${encodeURIComponent(tr)}`;
+  }
+  return magnet;
+}
+
+/**
  * Transforms a hydra_vault database row into a Stremio v3 Stream object
  */
 function formatStremioStream(entry) {
@@ -167,7 +181,9 @@ function formatStremioStream(entry) {
     titleLines.push(techDetails.join(' | '));
   }
   
-  titleLines.push(`🔒 Hydra Vault • Curated Stream`);
+  titleLines.push(entry.added_via === 'prowlarr'
+    ? `🔒 Hydra Vault • Auto-Fill (Prowlarr${entry.indexer ? ' · ' + entry.indexer : ''})`
+    : `🔒 Hydra Vault • Curated Stream`);
 
   const stream = {
     name: `[Hydra] ${quality}\n${platform}`,
@@ -199,6 +215,8 @@ function formatStremioStream(entry) {
 module.exports = {
   parseMagnet,
   formatStremioStream,
+  buildMagnet,
+  formatBytes,
   base32ToHex,
   DEFAULT_TRACKERS
 };

@@ -8,6 +8,7 @@
 - [Características Principales](#-características-principales)
 - [Arquitectura & Stack](#-arquitectura--stack)
 - [Esquema de Base de Datos (Layerbase PostgreSQL)](#-esquema-de-base-de-datos-layerbase-postgresql)
+- [Auto-llenado con Prowlarr (bajo demanda)](#-auto-llenado-con-prowlarr-bajo-demanda)
 - [Variables de Entorno](#-variables-de-entorno)
 - [Despliegue en Vercel Serverless](#-despliegue-en-vercel-serverless)
 - [Ejecución Local / Servidor VPS](#-ejecución-local--servidor-vps)
@@ -26,9 +27,13 @@
   - `/stream/{type}/{id}.json`: Resolución de torrents y enlaces directos con mapeo inteligente de IMDb (`tt...`), Kitsu (`kitsu:...`), TMDb (`tmdb:...`), AniList y Custom IDs.
   - `/catalog/{type}/{id}.json`: Navegación y filtrado por género, plataforma (Viki, iQiyi, Europa) y buscador integrado.
   - `/meta/{type}/{id}.json`: Metadatos y soporte de reproducción para títulos exclusivos o IDs personalizados.
-- **Base de Datos PostgreSQL (Layerbase):**
+- **Base de Datos PostgreSQL (Layerbase):** 
   - Cliente oficial `pg` con SSL y pool limitado por defecto a una conexión por instancia serverless (`PG_MAX` permite ajustarlo).
   - La inicialización de esquema es bajo demanda; modo memoria disponible en desarrollo sin conexión.
+- **Auto-llenado con Prowlarr (opcional):** 
+  - Cuando Stremio pide un título que no está en la BD, el addon busca en indexers vía Prowlarr y **cachea los resultados en `hydra_vault`** (dedup por infohash). La base se alimenta sola con la demanda real.
+  - Las filas curadas a mano salen primero; las automáticas se marcan `added_via='prowlarr'`.
+  - Búsqueda síncrona con timeout configurable (`PROWLARR_TIMEOUT_MS`); si no llega a tiempo, responde vacío y el resultado queda cacheado para el reintento.
 - **Panel de Administración (`/admin`):**
   - Formulario responsivo con campos completos y detalles opcionales plegables.
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
@@ -77,11 +82,73 @@ CREATE TABLE hydra_vault (
     size VARCHAR(20) DEFAULT 'N/D',        -- Ej: '1.4 GB', '450 MB'
     seeders INT DEFAULT 10,
     
+    -- Procedencia y dedup (auto-llenado Prowlarr)
+    infohash VARCHAR(40),                  -- BTIH hex en minúsculas (dedup único)
+    added_via VARCHAR(20) DEFAULT 'manual',-- 'manual' | 'prowlarr'
+    indexer VARCHAR(100),                  -- Nombre del indexer (solo filas prowlarr)
+    
     created_at TIMESTAMP DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hydra_vault_infohash ON hydra_vault (infohash);
 ```
 
 ---
+
+## 🤖 Auto-llenado con Prowlarr (bajo demanda)
+
+Cuando habilitas Prowlarr, el addon se convierte en un híbrido **curado + automático**: cada petición de Stremio que no encuentra streams alimenta la base de datos con resultados frescos de los indexers que tú configures en Prowlarr. La BD crece con la demanda real y el catálogo curado a mano sigue siendo la capa "premium".
+
+### Cómo funciona el flujo
+
+1. Stremio abre `/stream/{type}/{id}.json` para un título **que no está** en `hydra_vault`.
+2. El addon construye la búsqueda según el id:
+   - `tt...` / `tt...:1:2` → búsqueda por IMDb (`movie` / `tvsearch` + temporada/episodio).
+   - `tmdb:...` → búsqueda por TMDb id.
+   - `kitsu:...` / `anilist:...` → resuelve el título (API de Kitsu/AniList) y busca por texto en categoría Anime.
+   - `hydra:...` / ids custom → sin auto-llenado (no hay identificador externo).
+3. Consulta `GET {PROWLARR_URL}/api/v1/search` con la API key, con timeout (`PROWLARR_TIMEOUT_MS`, por defecto 8s).
+4. Normaliza resultados: solo torrents **con magnet/infohash** (convertibles a stream Stremio), dedup por infohash, orden por seeders.
+5. Inserta en `hydra_vault` con `added_via='prowlarr'` e `indexer` (el nombre del indexer), y devuelve los streams.
+6. Si el timeout gana: responde vacío con `Cache-Control: no-store` (Stremio no cachea el vacío), la búsqueda **sigue en background** y cachea en la BD — al reintentar, sale al instante.
+7. Las siguientes peticiones del mismo título resuelven **desde la BD** sin volver a tocar los indexers.
+
+### Despliegue recomendado: Docker Compose en un VPS
+
+Prowlarr es un servicio persistente (.NET): **no corre en Vercel Serverless**. Lo más simple y seguro es un VPS con todo el stack (el repo incluye `Dockerfile` y `docker-compose.yml`):
+
+```bash
+# 1. En tu VPS
+git clone https://github.com/noe359866-code/Hydra-Vault.git
+cd Hydra-Vault
+cp .env.example .env   # completa ADMIN_SECRET, LAYERBASE_DATABASE_URL y PROWLARR_API_KEY
+
+# 2. Levantar Hydra-Vault + Prowlarr (Prowlarr solo en loopback interno)
+docker compose up -d --build
+
+# 3. Configura tus indexers en la UI de Prowlarr vía túnel SSH:
+ssh -L 9696:localhost:9696 usuario@tu-vps
+# → http://localhost:9696  (añade indexers; Settings > General → API Key)
+
+# 4. Copia la API Key de Prowlarr a PROWLARR_API_KEY en .env y reinicia
+docker compose up -d
+```
+
+Solo el puerto `7000` (el addon) necesita estar público; Prowlarr permanece detrás del VPS y el addon le habla por la red interna (`http://prowlarr:9696`).
+
+### Alternativa: Vercel + Prowlarr en tu red
+
+Si prefieres mantener el addon en Vercel, ejecuta Prowlarr en cualquier máquina siempre encendida (VPS, NAS, Raspberry Pi) y expón su API por **túnel (Cloudflare Tunnel / Tailscale)** — nunca sin TLS ni autenticación extra. Configura `PROWLARR_URL` hacia ese endpoint. Aun así, recomendamos el stack Docker: más simple y sin dependencias cruzadas.
+
+### Notas y límites
+
+- **Dedup por infohash:** índice único en `infohash`; una búsqueda repetida nunca duplica filas.
+- **Procedencia visible:** en el stream se distingue `Auto-Fill (Prowlarr · Indexer)` vs `Curated Stream`. Filtra por plataforma `Prowlarr` en el panel.
+- **Los releases solo con `.torrent` (sin magnet/infohash) se ignoran** de momento: Stremio necesita infohash para reproducir.
+- **Una búsqueda por título caído** (la respuesta vacía no se cachea); el resultado queda en la BD para todas las temporadas/episodios relacionados que matcheen.
+- **Protege tus indexers:** la BD actúa de caché; no se re-busca lo que ya existe. Ajusta `PROWLARR_MIN_SEEDERS` y `PROWLARR_MAX_RESULTS` si tus indexers son sensibles.
+
+---
+
 
 ## 🔐 Variables de Entorno
 
@@ -99,6 +166,14 @@ PORT=7000
 
 # Entorno de Node ('production' o 'development')
 NODE_ENV=production
+
+# Prowlarr (opcional): auto-llenado de torrents bajo demanda
+PROWLARR_URL=http://prowlarr:9696        # vacío = desactivado
+PROWLARR_API_KEY=tu_api_key_de_prowlarr
+PROWLARR_TIMEOUT_MS=8000                 # máx. espera de /stream antes de responder
+PROWLARR_GRACE_MS=8000                   # margen extra para la búsqueda en background
+PROWLARR_MIN_SEEDERS=0                   # ignora resultados con menos seeders
+PROWLARR_MAX_RESULTS=12                  # máx. resultados guardados por búsqueda
 ```
 
 > **Nota:** Si `LAYERBASE_DATABASE_URL` no está definida, la aplicación iniciará automáticamente en **Modo Memoria (Mock)** con títulos de muestra para facilitar pruebas locales y previsualización sin bloquear la ejecución.
@@ -326,6 +401,9 @@ x-admin-secret: <ADMIN_SECRET>
 Hydra-Vault/
 ├── .env.example                 # Plantilla de variables de entorno
 ├── .gitignore                   # Archivos ignorados por Git
+├── .dockerignore                # Exclusiones para la imagen Docker
+├── Dockerfile                   # Imagen Node 22 para el modo VPS/Docker
+├── docker-compose.yml           # Stack recomendado: Hydra-Vault + Prowlarr
 ├── LICENSE                      # Licencia MIT
 ├── package.json                 # Dependencias y scripts de ejecución
 ├── server.js                    # Servidor Express independiente (0.0.0.0)
@@ -349,11 +427,14 @@ Hydra-Vault/
 │   │   └── stremio.js           # Rutas del protocolo Stremio Addon v3
 │   ├── stremio/
 │   │   ├── manifest.js          # Definición del manifiesto oficial v3
-│   │   ├── streamHandler.js     # Resolución de streams para Stremio
+│   │   ├── streamHandler.js     # Resolución de streams + auto-llenado Prowlarr
 │   │   ├── catalogHandler.js    # Proveedor de catálogos y filtros
 │   │   └── metaHandler.js       # Proveedor de metadatos
+│   ├── services/
+│   │   └── prowlarr.js          # Cliente Torznab de Prowlarr + normalización de releases
 │   └── utils/
 │       ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
+│       ├── titleResolver.js     # Resolución de títulos Kitsu/AniList para búsquedas
 │       └── seedData.js          # Catálogo curado inicial de ejemplo
 └── test/
     └── test.js                  # Batería completa de pruebas unitarias y de integración
@@ -376,6 +457,8 @@ Valida:
 - Seguridad y autenticación en la API (`401`, `403` y `201`).
 - Estricta correspondencia con las columnas de `hydra_vault`.
 - Renderizado de vistas HTML (`/` y `/admin`).
+- Auto-llenado Prowlarr: normalización y dedup de releases, búsqueda por id (`tt`, `kitsu`, `tmdb`), timeout con llenado en background y caché en la BD (con mock de Prowlarr local).
+- Resolución de títulos Kitsu/AniList con fetch simulado.
 
 ---
 

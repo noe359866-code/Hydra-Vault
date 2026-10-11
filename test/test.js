@@ -1,11 +1,24 @@
+// Configurar el mock de Prowlarr ANTES de cargar la app (config.js lee process.env al requerirse)
+process.env.PROWLARR_URL = 'http://127.0.0.1:7098';
+process.env.PROWLARR_API_KEY = 'test-prowlarr-key';
+process.env.PROWLARR_TIMEOUT_MS = '1200';
+process.env.PROWLARR_GRACE_MS = '5000';
+process.env.PROWLARR_MIN_SEEDERS = '0';
+process.env.PROWLARR_MAX_RESULTS = '12';
+
 const http = require('http');
 const assert = require('assert');
 const app = require('../src/app');
 const config = require('../src/config');
 const { parseMagnet } = require('../src/utils/magnet');
+const prowlarr = require('../src/services/prowlarr');
+const { resolveExternalTitle, clearTitleCache } = require('../src/utils/titleResolver');
 
 const TEST_PORT = 7099;
+const MOCK_PROWLARR_PORT = 7098;
 let server;
+let mockProwlarrServer;
+const prowlarrHits = {};
 
 function request(path, options = {}) {
   return new Promise((resolve, reject) => {
@@ -61,7 +74,80 @@ async function runTests() {
     }
   }
 
-  // Start temporary server
+  // Mock de Prowlarr: simula /api/v1/search con resultados deterministas
+  function handleMockProwlarr(req, res) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    if (url.pathname !== '/api/v1/search') {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end('{"error":"not found"}');
+      return;
+    }
+    if (req.headers['x-api-key'] !== 'test-prowlarr-key') {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"unauthorized"}');
+      return;
+    }
+
+    const key = url.searchParams.get('imdbId') || url.searchParams.get('query') || 'none';
+    prowlarrHits[key] = (prowlarrHits[key] || 0) + 1;
+
+    const send = (payload) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    };
+
+    if (key === 'tt8888888') {
+      const h1 = 'a'.repeat(40);
+      const h2 = 'b'.repeat(40);
+      return send([
+        {
+          title: 'Demo Show S01E02 1080p WEB-DL Dual',
+          magnetUrl: `magnet:?xt=urn:btih:${h1}&dn=Demo+Show+S01E02`,
+          size: 1500000000, seeders: 120, peers: 12,
+          indexer: 'MockIndexer', protocol: 'torrent', publishDate: '2026-10-01T00:00:00Z'
+        },
+        {
+          title: 'Demo Show S01E02 720p HDTV',
+          infoHash: h2,
+          size: 700000000, seeders: 45, peers: 5,
+          indexer: { name: 'MockIndexer2' }, protocol: 'torrent'
+        },
+        {
+          // usenet → debe filtrarse
+          title: 'Demo Show S01E02 1080p NZB (usenet)',
+          infoHash: 'c'.repeat(40), protocol: 'usenet', seeders: 999
+        },
+        {
+          // sin infohash/magnet → debe filtrarse
+          title: 'Demo Show S01E02 broken (no hash)',
+          downloadUrl: 'http://example.invalid/file.torrent', protocol: 'torrent', seeders: 50
+        },
+        {
+          // duplicado por infohash → debe deduplicarse
+          title: 'Demo Show S01E02 1080p dup',
+          infoHash: h1, protocol: 'torrent', seeders: 1
+        }
+      ]);
+    }
+
+    if (key === 'tt7770000') {
+      // Búsqueda lenta (2.5s) para probar el timeout + llenado en background
+      setTimeout(() => send([{
+        title: 'Slow Show 2026 1080p',
+        infoHash: 'd'.repeat(40), size: 2000000000, seeders: 33,
+        indexer: 'MockIndexer', protocol: 'torrent'
+      }]), 2500);
+      return;
+    }
+
+    return send([]);
+  }
+
+  // Start temporary servers
+  await new Promise(resolve => {
+    mockProwlarrServer = http.createServer(handleMockProwlarr);
+    mockProwlarrServer.listen(MOCK_PROWLARR_PORT, '127.0.0.1', resolve);
+  });
   await new Promise(resolve => {
     server = app.listen(TEST_PORT, '127.0.0.1', resolve);
   });
@@ -236,6 +322,131 @@ async function runTests() {
       assert(script.raw.includes('subtitles: valueOf'));
     });
 
+    // 5. Prowlarr: auto-llenado bajo demanda de la base de datos
+    await test('Prowlarr: normalizeResults filtra usenet/sin-hash y dedup por infohash', () => {
+      const results = prowlarr.normalizeResults([
+        { title: 'Pack S01E01 1080p', magnetUrl: `magnet:?xt=urn:btih:${'e'.repeat(40)}`, size: 100, seeders: 10, protocol: 'torrent' },
+        { title: 'NZB', infoHash: 'f'.repeat(40), protocol: 'usenet', seeders: 500 },
+        { title: 'Sin hash', downloadUrl: 'http://example.invalid/x.torrent', protocol: 'torrent', seeders: 9 },
+        { title: 'Dup del primero', infoHash: 'e'.repeat(40), protocol: 'torrent', seeders: 2 }
+      ]);
+      assert.strictEqual(results.length, 1);
+      assert.strictEqual(results[0].infoHash, 'e'.repeat(40));
+      assert(results[0].magnet.startsWith('magnet:?xt=urn:btih:'));
+
+      // Sin magnetUrl se sintetiza un magnet a partir del infohash
+      const built = prowlarr.normalizeResults([
+        { title: 'Solo hash 720p', infoHash: 'ab'.repeat(20), size: 50, seeders: 3, protocol: 'torrent' }
+      ]);
+      assert.strictEqual(built.length, 1);
+      assert(built[0].magnet.includes('ab'.repeat(20)));
+    });
+
+    await test('Prowlarr: buildSearchFromStreamId parsea tt/kitsu/tmdb y rechaza custom', () => {
+      const a = prowlarr.buildSearchFromStreamId({ type: 'series', id: 'tt1234567:2:5' });
+      assert.strictEqual(a.imdbId, 'tt1234567');
+      assert.strictEqual(a.season, 2);
+      assert.strictEqual(a.episode, 5);
+      assert.strictEqual(a.searchType, 'tvsearch');
+
+      const b = prowlarr.buildSearchFromStreamId({ type: 'movie', id: 'tt7654321' });
+      assert.strictEqual(b.searchType, 'movie');
+      assert.strictEqual(b.categories[0], 2000);
+
+      const c = prowlarr.buildSearchFromStreamId({ type: 'series', id: 'kitsu:41370:7' });
+      assert.strictEqual(c.vaultType, 'anime');
+      assert.strictEqual(c.episode, 7);
+      assert.strictEqual(c.needsTitle, true);
+
+      const d = prowlarr.buildSearchFromStreamId({ type: 'movie', id: 'tmdb:123:1:1' });
+      assert.strictEqual(d.tmdbId, '123');
+      assert.strictEqual(d.searchType, 'tvsearch');
+
+      assert.strictEqual(prowlarr.buildSearchFromStreamId({ type: 'movie', id: 'hydra:12' }), null);
+      assert.strictEqual(prowlarr.buildSearchFromStreamId({ type: 'movie', id: 'custom-slug-x' }), null);
+    });
+
+    await test('Prowlarr: parseEpisodeMeta y sugerencias de calidad/idioma', () => {
+      assert.deepStrictEqual(prowlarr.parseEpisodeMeta('Show S02E05 1080p'), { season: 2, episode: 5 });
+      assert.deepStrictEqual(prowlarr.parseEpisodeMeta('Show 1x03 WEB'), { season: 1, episode: 3 });
+      assert.deepStrictEqual(prowlarr.parseEpisodeMeta('Anime - 12 [1080p]'), { season: 1, episode: 12 });
+      assert.strictEqual(prowlarr.parseEpisodeMeta('Show S01 Pack'), null);
+      assert.strictEqual(prowlarr.guessQuality('Movie 2160p UHD'), '4K');
+      assert.strictEqual(prowlarr.guessQuality('Movie 720p'), '720p');
+      assert.strictEqual(prowlarr.guessAudioLang('Show Dual Latino'), 'Dual');
+      assert.strictEqual(prowlarr.guessAudioLang('Show SUB ESPAÑOL'), 'Español');
+      assert.strictEqual(prowlarr.guessSubtitles('Show sub español'), 'Español');
+    });
+
+    await test('Title resolver: Kitsu/AniList con fetch simulado y fallo en silencio', async () => {
+      clearTitleCache();
+      const fakeKitsu = async () => ({
+        ok: true,
+        json: async () => ({ data: { attributes: { canonicalTitle: 'Sousou no Frieren' } } })
+      });
+      const t1 = await resolveExternalTitle({ kind: 'kitsu', externalId: '52299' }, { fetchImpl: fakeKitsu });
+      assert.strictEqual(t1, 'Sousou no Frieren');
+
+      const fakeAniList = async () => ({
+        ok: true,
+        json: async () => ({ data: { Media: { title: { romaji: 'Sousou no Frieren', english: 'Frieren: Beyond Journey' } } } })
+      });
+      const t2 = await resolveExternalTitle({ kind: 'anilist', externalId: '154587' }, { fetchImpl: fakeAniList });
+      assert.strictEqual(t2, 'Frieren: Beyond Journey');
+
+      const fail = async () => { throw new Error('network down'); };
+      const t3 = await resolveExternalTitle({ kind: 'kitsu', externalId: '999' }, { fetchImpl: fail, useCache: false });
+      assert.strictEqual(t3, null);
+    });
+
+    await test('Prowlarr: /stream con id desconocido auto-llena la BD y devuelve streams', async () => {
+      const res = await request('/stream/series/tt8888888:1:2.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.streams.length, 2);
+
+      const stream = res.body.streams[0];
+      assert(stream.title.includes('Demo Show S01E02 1080p WEB-DL Dual'));
+      assert(stream.title.includes('Auto-Fill (Prowlarr'));
+      assert(stream.title.includes('MockIndexer'));
+      assert.strictEqual(stream.infoHash, 'a'.repeat(40));
+      assert(Array.isArray(stream.sources) && stream.sources.length > 0);
+      // orden: más seeders primero (120 → 45)
+      assert.strictEqual(res.body.streams[1].infoHash, 'b'.repeat(40));
+    });
+
+    await test('Prowlarr: segunda petición resuelve desde la BD sin repetir la búsqueda', async () => {
+      const hitsBefore = prowlarrHits['tt8888888'];
+      const res = await request('/stream/series/tt8888888:1:2.json');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.streams.length, 2);
+      assert.strictEqual(prowlarrHits['tt8888888'], hitsBefore);
+
+      // Las filas auto-llenadas quedan visibles también en el endpoint CF Worker
+      const vault = await request('/api/vault?id=tt8888888');
+      assert.strictEqual(vault.statusCode, 200);
+      assert.strictEqual(vault.body.streams.length, 2);
+    });
+
+    await test('Prowlarr: timeout devuelve vacío sin cachear y completa la BD en background', async () => {
+      const start = Date.now();
+      const res = await request('/stream/movie/tt7770000.json');
+      const elapsed = Date.now() - start;
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.deepStrictEqual(res.body.streams, []);
+      assert.strictEqual(res.headers['cache-control'], 'no-store');
+      assert(elapsed < 2200, `el timeout respondió demasiado tarde: ${elapsed}ms`);
+
+      // La búsqueda lenta (2.5s) termina en background y cachea en la BD
+      await new Promise(r => setTimeout(r, 3300));
+
+      const retry = await request('/stream/movie/tt7770000.json');
+      assert.strictEqual(retry.statusCode, 200);
+      assert.strictEqual(retry.body.streams.length, 1);
+      assert(retry.body.streams[0].title.includes('Slow Show'));
+      assert.strictEqual(prowlarrHits['tt7770000'], 1); // sin re-buscar: salió de la BD
+    });
+
     // 4. Stremio Manifest & Fallback Routes
     await test('Stremio: GET /manifest.json returns valid manifest', async () => {
       const res = await request('/manifest.json');
@@ -246,6 +457,7 @@ async function runTests() {
 
   } finally {
     await new Promise(resolve => server.close(resolve));
+    await new Promise(resolve => mockProwlarrServer.close(resolve));
   }
 
   console.log('----------------------------------------------------');

@@ -39,11 +39,21 @@ CREATE TABLE IF NOT EXISTS hydra_vault (
     size VARCHAR(20) DEFAULT 'N/D',        -- Ej: '1.4 GB', '450 MB'
     seeders INT DEFAULT 10,
     
+    -- Procedencia y dedup (auto-llenado Prowlarr)
+    infohash VARCHAR(40),                  -- BTIH hex en minúsculas (dedup único)
+    added_via VARCHAR(20) DEFAULT 'manual',-- 'manual' | 'prowlarr'
+    indexer VARCHAR(100),                  -- Nombre del indexer (solo filas prowlarr)
+    
     created_at TIMESTAMP DEFAULT NOW()
 );
 ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS season INTEGER;
 ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS episode INTEGER;
 ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS episode_title TEXT;
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS infohash VARCHAR(40);
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS added_via VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE hydra_vault ADD COLUMN IF NOT EXISTS indexer VARCHAR(100);
+UPDATE hydra_vault SET added_via = 'manual' WHERE added_via IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hydra_vault_infohash ON hydra_vault (infohash);
 `;
 
 // In-Memory Fallback Store (used when LAYERBASE_DATABASE_URL is not configured)
@@ -72,6 +82,9 @@ function initMemoryStore() {
         subtitles: item.subtitles || 'Multi',
         size: item.size || 'N/D',
         seeders: Number.isInteger(item.seeders) ? item.seeders : 10,
+        infohash: item.infohash || null,
+        added_via: item.added_via || 'manual',
+        indexer: item.indexer || null,
         created_at: new Date()
       });
     });
@@ -260,7 +273,8 @@ async function getEntries({ type, platform, search, page = 1, limit = 50, sort =
 
       const dataSql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders,
+               infohash, added_via, indexer, created_at
         FROM hydra_vault
         ${whereClause}
         ${orderBy}
@@ -338,7 +352,8 @@ async function getEntryById(id) {
     try {
       const res = await p.query(
         `SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders,
+                infohash, added_via, indexer, created_at
          FROM hydra_vault
          WHERE id = $1`,
         [numId]
@@ -376,12 +391,16 @@ async function createEntry(entry) {
     audio_lang: entry.audio_lang ? String(entry.audio_lang).trim() : 'Multi',
     subtitles: entry.subtitles ? String(entry.subtitles).trim() : 'Multi',
     size: entry.size ? String(entry.size).trim() : 'N/D',
-    seeders: Number.isInteger(parseInt(entry.seeders, 10)) ? parseInt(entry.seeders, 10) : 10
+    seeders: Number.isInteger(parseInt(entry.seeders, 10)) ? parseInt(entry.seeders, 10) : 10,
+    infohash: entry.infohash ? String(entry.infohash).trim().toLowerCase() : null,
+    added_via: entry.added_via ? String(entry.added_via).trim().toLowerCase() : 'manual',
+    indexer: entry.indexer ? String(entry.indexer).trim().slice(0, 100) : null
   };
 
   if (!clean.title) throw new Error('title is required');
   if (!clean.magnet) throw new Error('magnet is required');
   if (!clean.type) throw new Error('type is required');
+  if (clean.infohash && !/^[a-f0-9]{40}$/.test(clean.infohash)) throw new Error('infohash must be a 40-char hex BTIH');
   if (clean.season !== null && (!Number.isInteger(clean.season) || clean.season < 0)) throw new Error('season must be a non-negative integer');
   if (clean.episode !== null && (!Number.isInteger(clean.episode) || clean.episode < 1)) throw new Error('episode must be a positive integer');
   if ((clean.season === null) !== (clean.episode === null) && ['series','drama','anime'].includes(clean.type)) throw new Error('season and episode must be supplied together for episodic content');
@@ -393,18 +412,23 @@ async function createEntry(entry) {
         INSERT INTO hydra_vault (
           imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
           type, season, episode, episode_title, source_platform, title, magnet,
-          quality, audio_lang, subtitles, size, seeders
+          quality, audio_lang, subtitles, size, seeders,
+          infohash, added_via, indexer
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15, $16, $17
+          $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20
         )
         RETURNING id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-                  type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+                  type, season, episode, episode_title, source_platform, title, magnet,
+                  quality, audio_lang, subtitles, size, seeders,
+                  infohash, added_via, indexer, created_at
       `;
       const values = [
         clean.imdb_id, clean.tmdb_id, clean.anilist_id, clean.kitsu_id, clean.custom_id,
         clean.type, clean.season, clean.episode, clean.episode_title, clean.source_platform, clean.title, clean.magnet,
-        clean.quality, clean.audio_lang, clean.subtitles, clean.size, clean.seeders
+        clean.quality, clean.audio_lang, clean.subtitles, clean.size, clean.seeders,
+        clean.infohash, clean.added_via, clean.indexer
       ];
       const res = await p.query(sql, values);
       return res.rows[0];
@@ -605,7 +629,8 @@ async function findStreamsForStremio({ type, id }) {
     try {
       const sql = `
         SELECT id, imdb_id, tmdb_id, anilist_id, kitsu_id, custom_id,
-               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders, created_at
+               type, season, episode, episode_title, source_platform, title, magnet, quality, audio_lang, subtitles, size, seeders,
+               infohash, added_via, indexer, created_at
         FROM hydra_vault
         WHERE 
           imdb_id = $1 OR imdb_id = $2
@@ -621,10 +646,9 @@ async function findStreamsForStremio({ type, id }) {
       const res = await p.query(sql, values);
       let rows = res.rows;
 
-      // If season & episode specified, filter or score results matching episode
+      // If season & episode specified, prioritize exact matches but keep packs/general results
       if (season !== null && episode !== null && rows.length > 0) {
-        const exact = rows.filter(row => Number(row.season) === season && Number(row.episode) === episode);
-        rows = exact.length ? exact : filterAndSortByEpisode(rows, season, episode);
+        rows = filterAndSortByEpisode(rows, season, episode);
       } else if (episode !== null && rows.length > 0) {
         rows = filterAndSortByEpisode(rows, 1, episode);
       }
@@ -649,8 +673,7 @@ async function findStreamsForStremio({ type, id }) {
   });
 
   if (season !== null && episode !== null && matches.length > 0) {
-    const exact = matches.filter(row => Number(row.season) === season && Number(row.episode) === episode);
-    matches = exact.length ? exact : filterAndSortByEpisode(matches, season, episode);
+    matches = filterAndSortByEpisode(matches, season, episode);
   } else if (episode !== null && matches.length > 0) {
     matches = filterAndSortByEpisode(matches, 1, episode);
   }
@@ -660,29 +683,42 @@ async function findStreamsForStremio({ type, id }) {
 }
 
 /**
- * Helper to prioritize streams matching season and episode in title or custom_id
+ * Helper to prioritize streams matching season and episode.
+ * Orden: (1) filas con temporada/episodio exactos en columnas,
+ * (2) filas cuyo titulo coincide con el episodio pedido, (3) packs/general.
+ * Las filas etiquetadas con OTRO episodio concreto se ocultan (ruido).
  */
 function filterAndSortByEpisode(rows, season, episode) {
-  const padEp = String(episode).padStart(2, '0');
-  const padSe = String(season).padStart(2, '0');
-  
   // Patterns like S01E03, S1E3, 1x03, Ep 03, E03
-  const specificRegex = new RegExp(`(s0?${season}e0?${episode}|${season}x0?${episode}|ep(isode)?\\s*0?${episode}|cap(itulo)?\\s*0?${episode}|e0?${episode})`, 'i');
+  const specificRegex = new RegExp(`(s0?${season}e0?${episode}|${season}x0?${episode}|ep(isode)?\\\\s*0?${episode}|cap(itulo)?\\\\s*0?${episode}|e0?${episode})`, 'i');
 
+  const exact = [];
   const prioritized = [];
   const general = [];
 
   for (const row of rows) {
+    const rowSeason = row.season === null || row.season === undefined ? null : Number(row.season);
+    const rowEpisode = row.episode === null || row.episode === undefined ? null : Number(row.episode);
     const text = `${row.title} ${row.custom_id || ''} ${row.imdb_id || ''}`;
-    if (specificRegex.test(text)) {
+    const titleMatches = specificRegex.test(text);
+
+    // Filas marcadas con un episodio distinto y sin coincidencia en titulo -> ocultar
+    if (rowSeason !== null && rowEpisode !== null &&
+        (rowSeason !== season || rowEpisode !== episode) && !titleMatches) {
+      continue;
+    }
+
+    if (rowSeason === season && rowEpisode === episode) {
+      exact.push(row);
+    } else if (titleMatches) {
       prioritized.push(row);
     } else {
       general.push(row);
     }
   }
 
-  // If specific episode streams exist, put them first followed by series packs
-  return [...prioritized, ...general];
+  // Exact episode streams first, then title matches, then series packs/general
+  return [...exact, ...prioritized, ...general];
 }
 
 /**
@@ -864,6 +900,63 @@ async function seedData() {
   return bulkInsert(SEED_ENTRIES);
 }
 
+/**
+ * Returns a Set of the given infohashes already present in hydra_vault (dedup helper)
+ */
+async function findExistingInfohashes(hashes) {
+  const list = Array.from(new Set((hashes || []).map(h => String(h || '').trim().toLowerCase()).filter(Boolean)));
+  const found = new Set();
+  if (list.length === 0) return found;
+
+  const p = getPool();
+  if (p && isPgAvailable) {
+    try {
+      const res = await p.query('SELECT infohash FROM hydra_vault WHERE infohash = ANY($1)', [list]);
+      res.rows.forEach(r => { if (r.infohash) found.add(r.infohash); });
+      return found;
+    } catch (err) {
+      console.error('Error checking existing infohashes in PostgreSQL:', err.message);
+    }
+  }
+
+  initMemoryStore();
+  memoryStore.forEach(e => {
+    if (e.infohash && list.includes(e.infohash)) found.add(e.infohash);
+  });
+  return found;
+}
+
+/**
+ * Ingest auto-discovered entries (Prowlarr) with dedup by infohash:
+ * - skips hashes already in the vault or repeated within the batch
+ * - skips rows that fail validation / unique conflicts
+ * Returns { inserted, items, skipped }
+ */
+async function ingestAutoEntries(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  const existing = await findExistingInfohashes(list.map(e => e && e.infohash));
+  const batchSeen = new Set();
+  const items = [];
+  let skipped = 0;
+
+  for (const entry of list) {
+    const hash = entry && entry.infohash ? String(entry.infohash).trim().toLowerCase() : null;
+    if (hash && (existing.has(hash) || batchSeen.has(hash))) {
+      skipped++;
+      continue;
+    }
+    if (hash) batchSeen.add(hash);
+    try {
+      items.push(await createEntry(entry));
+    } catch (err) {
+      // Unique/validación → omitir sin abortar el lote
+      skipped++;
+    }
+  }
+
+  return { inserted: items.length, items, skipped };
+}
+
 module.exports = {
   initDb,
   checkHealth,
@@ -876,5 +969,7 @@ module.exports = {
   getCatalogItems,
   getStats,
   bulkInsert,
-  seedData
+  seedData,
+  findExistingInfohashes,
+  ingestAutoEntries
 };
