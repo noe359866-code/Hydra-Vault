@@ -3,6 +3,8 @@ const cors = require('cors');
 const path = require('path');
 const stremioRoutes = require('./routes/stremio');
 const adminAddHandler = require('../api/admin/add');
+const adminListHandler = require('../api/admin/list');
+const adminDeleteHandler = require('../api/admin/delete');
 
 const app = express();
 
@@ -19,8 +21,10 @@ app.use(express.json({ limit: '1mb' }));
 // Static Assets
 app.use(express.static(path.join(__dirname, '../public'), { maxAge: '1h' }));
 
-// Único endpoint de escritura: guardar contenido desde /admin (igual que la función serverless de Vercel).
-app.all('/api/admin/add', adminAddHandler);
+// Endpoints privados del panel /admin (igual que las funciones serverless de Vercel).
+app.all('/api/admin/add', adminAddHandler);       // Guardar contenido
+app.all('/api/admin/list', adminListHandler);     // Buscar/listar registros
+app.all('/api/admin/delete', adminDeleteHandler); // Eliminar registros seleccionados
 
 // Lightweight static pages (also rewritten directly to static files on Vercel).
 app.get('/admin', (req, res) => {

@@ -615,6 +615,7 @@ form.addEventListener('submit', async (event) => {
     }
     updateEpisodePreview();
     showStatus(message);
+    loadDataPage(); // Mantiene al día la lista de «Tus datos».
     magnetInput.focus();
   } catch (error) {
     showStatus(error.message || 'Error de conexión. Inténtalo de nuevo.', true);
@@ -633,6 +634,191 @@ document.addEventListener('keydown', (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Tus datos: buscar, seleccionar y eliminar registros guardados
+// ---------------------------------------------------------------------------
+const dataList = $('data-list');
+const dataStatus = $('data-status');
+const dataSelectAll = $('data-select-all');
+const deleteSelectedButton = $('data-delete-selected');
+const dataState = { page: 1, pages: 1, limit: 20, total: 0, items: [] };
+
+function dataShowStatus(message, isError = false) {
+  dataStatus.textContent = message;
+  dataStatus.dataset.kind = isError ? 'error' : 'ok';
+  dataStatus.hidden = false;
+}
+
+function dataHideStatus() {
+  dataStatus.hidden = true;
+}
+
+function dataSecret() {
+  const secret = secretInput.value.trim();
+  if (!secret) {
+    renderSecretState(true);
+    dataShowStatus('Introduce tu clave de administrador arriba para ver y eliminar tus datos.', true);
+    secretInput.focus();
+    return null;
+  }
+  return secret;
+}
+
+function dataCreated(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('es');
+}
+
+function dataRowLabel(item) {
+  if (item.episode === null || item.episode === undefined) return item.type === 'movie' ? 'Película' : '';
+  return episodeLabel(item.type, item.season ?? '', item.episode);
+}
+
+function updateDataSelection() {
+  const boxes = [...dataList.querySelectorAll('input[data-id]')];
+  const checked = boxes.filter(box => box.checked);
+  dataSelectAll.checked = boxes.length > 0 && checked.length === boxes.length;
+  dataSelectAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+  deleteSelectedButton.disabled = checked.length === 0;
+  deleteSelectedButton.textContent = checked.length > 0
+    ? `Eliminar seleccionados (${checked.length})`
+    : 'Eliminar seleccionados';
+  $('data-count').textContent = dataState.total
+    ? `${dataState.total} registro${dataState.total === 1 ? '' : 's'} · ${checked.length} seleccionado${checked.length === 1 ? '' : 's'}`
+    : '';
+}
+
+function renderDataList() {
+  dataList.replaceChildren(...dataState.items.map(item => {
+    const li = document.createElement('li');
+    li.className = 'data-item';
+
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'data-check';
+    check.dataset.id = String(item.id);
+    check.setAttribute('aria-label', `Seleccionar ${item.title}`);
+    check.addEventListener('change', updateDataSelection);
+
+    const body = document.createElement('div');
+    body.className = 'data-item-body';
+    const name = document.createElement('span');
+    name.className = 'data-name';
+    name.textContent = item.title;
+    name.title = item.title;
+    const meta = document.createElement('span');
+    meta.className = 'data-meta';
+    meta.textContent = [
+      dataRowLabel(item), item.quality, item.audio_lang, item.size,
+      item.seeders !== null && item.seeders !== undefined ? `${item.seeders} seeds` : '',
+      dataCreated(item.created_at)
+    ].filter(Boolean).join(' · ');
+    body.append(name, meta);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'link-button link-danger data-remove';
+    remove.textContent = 'Eliminar';
+    remove.addEventListener('click', () => deleteDataRows([item.id]));
+
+    li.append(check, body, remove);
+    return li;
+  }));
+  $('data-empty').hidden = dataState.items.length > 0;
+  updateDataSelection();
+}
+
+async function loadDataPage() {
+  const secret = dataSecret();
+  if (!secret) return;
+  dataHideStatus();
+  const params = new URLSearchParams({
+    search: $('data-search').value.trim(),
+    type: $('data-type').value,
+    page: String(dataState.page),
+    limit: String(dataState.limit)
+  });
+  dataList.setAttribute('aria-busy', 'true');
+  try {
+    const response = await fetch(`/api/admin/list?${params.toString()}`, {
+      headers: { 'x-admin-secret': secret }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      renderSecretState(true);
+      throw new Error('Clave incorrecta. Revisa ADMIN_SECRET.');
+    }
+    if (!response.ok || !result.success) throw new Error(result.error || `Error HTTP ${response.status}`);
+
+    dataState.page = result.data.page;
+    dataState.pages = result.data.pages;
+    dataState.total = result.data.total;
+    dataState.items = result.data.items;
+    renderDataList();
+    $('data-pager').hidden = dataState.pages <= 1;
+    $('data-page-info').textContent = `Página ${dataState.page} de ${dataState.pages}`;
+    $('data-prev').disabled = dataState.page <= 1;
+    $('data-next').disabled = dataState.page >= dataState.pages;
+  } catch (error) {
+    dataShowStatus(error.message || 'No se pudieron cargar tus datos.', true);
+  } finally {
+    dataList.removeAttribute('aria-busy');
+  }
+}
+
+async function deleteDataRows(ids) {
+  if (!ids.length) return;
+  const secret = dataSecret();
+  if (!secret) return;
+  const question = ids.length === 1
+    ? '¿Eliminar este registro? Esta acción no se puede deshacer.'
+    : `¿Eliminar los ${ids.length} registros seleccionados? Esta acción no se puede deshacer.`;
+  if (!window.confirm(question)) return;
+
+  try {
+    const response = await fetch('/api/admin/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+      body: JSON.stringify({ ids })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      renderSecretState(true);
+      throw new Error('Clave incorrecta. Revisa ADMIN_SECRET.');
+    }
+    if (!response.ok || !result.success) throw new Error(result.error || `Error HTTP ${response.status}`);
+
+    const deleted = result.deleted ?? ids.length;
+    dataShowStatus(`✓ ${deleted} registro${deleted === 1 ? '' : 's'} eliminado${deleted === 1 ? '' : 's'}.`);
+    // Si la página queda vacía tras borrar, retrocede una para no mostrar páginas en blanco.
+    if (dataState.items.length <= ids.length && dataState.page > 1) dataState.page -= 1;
+    await loadDataPage();
+  } catch (error) {
+    dataShowStatus(error.message || 'No se pudieron eliminar los registros.', true);
+  }
+}
+
+$('data-filters').addEventListener('submit', (event) => {
+  event.preventDefault();
+  dataState.page = 1;
+  loadDataPage();
+});
+$('data-reload').addEventListener('click', () => loadDataPage());
+dataSelectAll.addEventListener('change', () => {
+  dataList.querySelectorAll('input[data-id]').forEach(box => { box.checked = dataSelectAll.checked; });
+  updateDataSelection();
+});
+deleteSelectedButton.addEventListener('click', () => {
+  const ids = [...dataList.querySelectorAll('input[data-id]:checked')].map(box => Number(box.dataset.id));
+  deleteDataRows(ids);
+});
+$('data-prev').addEventListener('click', () => {
+  if (dataState.page > 1) { dataState.page -= 1; loadDataPage(); }
+});
+$('data-next').addEventListener('click', () => {
+  if (dataState.page < dataState.pages) { dataState.page += 1; loadDataPage(); }
+});
+
+// ---------------------------------------------------------------------------
 // Inicio
 // ---------------------------------------------------------------------------
 // Idiomas: muestra el campo libre al elegir «Otro idioma…» y lo oculta al volver a un preset.
@@ -648,4 +834,7 @@ loadPrefs();
 applyTypeRules();
 renderRecent();
 setInterval(renderRecent, 60000);
-if (secretInput.value) magnetInput.focus();
+if (secretInput.value) {
+  magnetInput.focus();
+  loadDataPage();
+}
