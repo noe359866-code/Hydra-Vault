@@ -289,6 +289,122 @@ async function runTests() {
       assert.strictEqual(otherEpisode.statusCode, 201);
     });
 
+    // 2b. Gestión de datos: listar/buscar y eliminar los registros seleccionados.
+    await test('Admin API: GET /api/admin/list requires x-admin-secret', async () => {
+      const res = await request('/api/admin/list');
+      assert.strictEqual(res.statusCode, 401);
+      assert.strictEqual(res.body.success, false);
+      assert(res.body.error.includes('Unauthorized'));
+    });
+
+    await test('Admin API: GET /api/admin/list searches, filters by type and paginates', async () => {
+      const res = await request('/api/admin/list?search=Twinkling', {
+        headers: { 'x-admin-secret': config.adminSecret }
+      });
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
+      assert(Array.isArray(res.body.data.items));
+      assert(res.body.data.items.some(item => item.title.includes('Twinkling')));
+      assert(res.body.data.total >= 1);
+      assert.strictEqual(res.body.data.page, 1);
+      assert(res.body.data.pages >= 1);
+
+      const movies = await request('/api/admin/list?type=movie&limit=5', {
+        headers: { 'x-admin-secret': config.adminSecret }
+      });
+      assert.strictEqual(movies.statusCode, 200);
+      assert(movies.body.data.items.every(item => item.type === 'movie'));
+      assert.strictEqual(movies.body.data.limit, 5);
+
+      const badType = await request('/api/admin/list?type=xxx', {
+        headers: { 'x-admin-secret': config.adminSecret }
+      });
+      assert.strictEqual(badType.statusCode, 400);
+    });
+
+    await test('Admin API: POST /api/admin/delete requires x-admin-secret and valid ids', async () => {
+      const unauthorized = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { ids: [1] }
+      });
+      assert.strictEqual(unauthorized.statusCode, 401);
+
+      const empty = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: { ids: [] }
+      });
+      assert.strictEqual(empty.statusCode, 400);
+
+      const badId = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: { ids: ['abc'] }
+      });
+      assert.strictEqual(badId.statusCode, 400);
+
+      const noIds = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: {}
+      });
+      assert.strictEqual(noIds.statusCode, 400);
+    });
+
+    await test('Admin API: POST /api/admin/delete removes only the selected records', async () => {
+      const a = await addEntry({ title: 'Borrar A S01E01', type: 'series', season: 1, episode: 1, magnet: MAGNET('e') });
+      const b = await addEntry({ title: 'Borrar B S01E01', type: 'series', season: 1, episode: 1, magnet: MAGNET('f') });
+      const keep = await addEntry({ title: 'Conservar C S01E01', type: 'series', season: 1, episode: 1, magnet: MAGNET('d') });
+      assert.strictEqual(a.statusCode, 201);
+      assert.strictEqual(b.statusCode, 201);
+      assert.strictEqual(keep.statusCode, 201);
+      const ids = [a.body.data.id, b.body.data.id];
+
+      const res = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: { ids }
+      });
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.body.deleted, 2);
+      assert.deepStrictEqual([...res.body.ids].sort(), [...ids].sort());
+
+      const list = await request('/api/admin/list?search=Borrar', {
+        headers: { 'x-admin-secret': config.adminSecret }
+      });
+      assert.strictEqual(list.body.data.items.length, 0);
+
+      const stillThere = await request('/api/admin/list?search=Conservar', {
+        headers: { 'x-admin-secret': config.adminSecret }
+      });
+      assert.strictEqual(stillThere.body.data.items.length, 1);
+      assert.strictEqual(stillThere.body.data.items[0].id, keep.body.data.id);
+    });
+
+    await test('Admin API: POST /api/admin/delete accepts a single { id } and unknown ids delete nothing', async () => {
+      const created = await addEntry({ title: 'Borrar por id S01E01', type: 'series', season: 1, episode: 1, magnet: MAGNET('ab') });
+      assert.strictEqual(created.statusCode, 201);
+
+      const res = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: { id: created.body.data.id }
+      });
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.deleted, 1);
+      assert.deepStrictEqual(res.body.ids, [created.body.data.id]);
+
+      const ghost = await request('/api/admin/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': config.adminSecret },
+        body: { ids: [999999] }
+      });
+      assert.strictEqual(ghost.statusCode, 200);
+      assert.strictEqual(ghost.body.deleted, 0);
+    });
+
     await test('Stremio catalog: one item per show with a clean name and real poster', async () => {
       const res = await request('/catalog/series/hydra_series.json');
       const items = res.body.metas.filter(m => m.id === 'tt6660001');
@@ -352,6 +468,22 @@ async function runTests() {
       assert(script.raw.includes('subtitles: valueOf'));
       assert(script.raw.includes('setLangField'));
       assert(script.raw.includes("setLangField('audio_lang', 'Polaco')"));
+    });
+
+    await test('Admin page includes the data manager (search, select and delete)', async () => {
+      const res = await request('/admin');
+      assert(res.raw.includes('Tus datos'));
+      assert(res.raw.includes('id="data-search"'));
+      assert(res.raw.includes('id="data-select-all"'));
+      assert(res.raw.includes('id="data-delete-selected"'));
+      assert(res.raw.includes('Eliminar seleccionados'));
+      assert(res.raw.includes('Seleccionar todo'));
+
+      const script = await request('/admin.js');
+      assert(script.raw.includes("fetch('/api/admin/delete'"));
+      assert(script.raw.includes('/api/admin/list?'));
+      assert(script.raw.includes('deleteDataRows'));
+      assert(script.raw.includes('window.confirm'));
     });
 
     // 4. Stremio Manifest & Fallback Routes

@@ -7,8 +7,8 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Administración — Hydra Vault</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=4">
-  <script src="/admin.js?v=4" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=5">
+  <script src="/admin.js?v=5" defer></script>
 </head>
 <body class="admin-page">
   <div class="site-shell admin-shell">
@@ -298,7 +298,45 @@
         <ul id="recent-list"></ul>
       </section>
 
-      <p class="admin-footnote">El panel es estático; solo se contacta al servidor cuando guardas un registro.</p>
+      <!-- Buscar, seleccionar y eliminar registros guardados -->
+      <section class="data-panel" id="data-panel" aria-labelledby="data-title">
+        <div class="data-head">
+          <h2 id="data-title">Tus datos</h2>
+          <p class="data-sub">Busca lo que quieras, márcalo con las casillas y elimínalo. Esto borra el registro del catálogo de Stremio.</p>
+        </div>
+
+        <form class="data-filters" id="data-filters">
+          <input id="data-search" type="search" maxlength="200" spellcheck="false" placeholder="Buscar por título, enlace o ID…" aria-label="Buscar registros">
+          <select id="data-type" aria-label="Filtrar por tipo">
+            <option value="">Todos los tipos</option>
+            <option value="drama">Drama</option>
+            <option value="anime">Anime</option>
+            <option value="series">Serie</option>
+            <option value="movie">Película</option>
+          </select>
+          <button type="submit" class="button button-secondary" id="data-search-button">Buscar</button>
+          <button type="button" class="link-button" id="data-reload">Actualizar</button>
+        </form>
+
+        <div class="data-actions">
+          <label class="data-select-all"><input type="checkbox" id="data-select-all"> Seleccionar todo</label>
+          <span class="data-count" id="data-count" aria-live="polite"></span>
+          <button type="button" class="button button-danger" id="data-delete-selected" disabled>Eliminar seleccionados</button>
+        </div>
+
+        <p class="data-status" id="data-status" role="status" aria-live="polite" hidden></p>
+
+        <ul class="data-list" id="data-list"></ul>
+        <p class="data-empty" id="data-empty" hidden>No hay registros que coincidan.</p>
+
+        <div class="data-pager" id="data-pager" hidden>
+          <button type="button" class="button button-secondary" id="data-prev">← Anterior</button>
+          <span id="data-page-info"></span>
+          <button type="button" class="button button-secondary" id="data-next">Siguiente →</button>
+        </div>
+      </section>
+
+      <p class="admin-footnote">El panel es estático; solo se contacta al servidor cuando guardas o gestionas registros.</p>
     </main>
   </div>
 </body>

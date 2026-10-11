@@ -8,6 +8,8 @@
     { "source": "/admin.js", "destination": "/public/admin.js" },
     { "source": "/favicon.svg", "destination": "/public/favicon.svg" },
     { "source": "/api/admin/add", "destination": "/api/admin/add.js" },
+    { "source": "/api/admin/list", "destination": "/api/admin/list.js" },
+    { "source": "/api/admin/delete", "destination": "/api/admin/delete.js" },
     { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }

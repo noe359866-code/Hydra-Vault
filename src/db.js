@@ -438,6 +438,112 @@ async function getCatalogItems({ catalogId, type, genre, search, skip = 0, limit
   return grouped.slice(parsedSkip, parsedSkip + parsedLimit);
 }
 
+// ---------------------------------------------------------------------------
+// Gestión de datos desde /admin (listar, buscar y eliminar)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lista registros con búsqueda libre y filtro por tipo, ordenados del más reciente al más antiguo.
+ * Devuelve { rows, total } para paginar en el panel.
+ */
+async function listEntries({ search = '', type = '', skip = 0, limit = 20 } = {}) {
+  const parsedSkip = Math.max(parseInt(skip, 10) || 0, 0);
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const cleanSearch = cleanText(search);
+  const cleanType = cleanText(type);
+
+  const p = getPool();
+  if (p) {
+    await ensureReady();
+    const conditions = [];
+    const values = [];
+
+    if (cleanType) {
+      values.push(cleanType.toLowerCase());
+      conditions.push(`type = $${values.length}`);
+    }
+    if (cleanSearch) {
+      values.push(`%${cleanSearch}%`);
+      const idx = values.length;
+      conditions.push(
+        `(title ILIKE $${idx} OR magnet ILIKE $${idx}
+         OR COALESCE(custom_id, '') ILIKE $${idx} OR COALESCE(imdb_id, '') ILIKE $${idx}
+         OR COALESCE(kitsu_id, '') ILIKE $${idx} OR COALESCE(tmdb_id, '') ILIKE $${idx}
+         OR COALESCE(anilist_id, '') ILIKE $${idx} OR COALESCE(episode_title, '') ILIKE $${idx})`
+      );
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countRes = await p.query(`SELECT COUNT(*)::int AS total FROM hydra_vault ${whereClause}`, values);
+    const total = countRes.rows[0].total;
+
+    const listValues = [...values, parsedLimit, parsedSkip];
+    const res = await p.query(
+      `SELECT ${COLUMNS} FROM hydra_vault
+       ${whereClause}
+       ORDER BY created_at DESC, id DESC
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      listValues
+    );
+    return { rows: res.rows, total };
+  }
+
+  initMemoryStore();
+  let results = [...memoryStore];
+  if (cleanType) {
+    const wanted = cleanType.toLowerCase();
+    results = results.filter(e => e.type === wanted);
+  }
+  if (cleanSearch) {
+    const s = cleanSearch.toLowerCase();
+    results = results.filter(e =>
+      [e.title, e.magnet, e.custom_id, e.imdb_id, e.kitsu_id, e.tmdb_id, e.anilist_id, e.episode_title]
+        .some(v => v && String(v).toLowerCase().includes(s))
+    );
+  }
+  results.sort((a, b) =>
+    (new Date(b.created_at) - new Date(a.created_at)) || (b.id - a.id)
+  );
+  return {
+    rows: results.slice(parsedSkip, parsedSkip + parsedLimit).map(row => ({ ...row })),
+    total: results.length
+  };
+}
+
+/**
+ * Elimina registros por id. Devuelve { deleted, ids } con los ids realmente borrados.
+ */
+async function deleteEntries(ids) {
+  const wanted = [...new Set(
+    (Array.isArray(ids) ? ids : [ids])
+      .map(value => (typeof value === 'number' ? value : parseInt(String(value).trim(), 10)))
+      .filter(value => Number.isInteger(value) && value > 0)
+  )];
+  if (wanted.length === 0) return { deleted: 0, ids: [] };
+
+  const p = getPool();
+  if (p) {
+    await ensureReady();
+    const res = await p.query(
+      `DELETE FROM hydra_vault WHERE id = ANY($1::int[]) RETURNING id`,
+      [wanted]
+    );
+    return { deleted: res.rowCount, ids: res.rows.map(row => row.id) };
+  }
+
+  initMemoryStore();
+  const toDelete = new Set(wanted);
+  const remaining = [];
+  const deleted = [];
+  for (const row of memoryStore) {
+    if (toDelete.has(row.id)) deleted.push(row.id);
+    else remaining.push(row);
+  }
+  memoryStore.length = 0;
+  memoryStore.push(...remaining);
+  return { deleted: deleted.length, ids: deleted };
+}
+
 module.exports = {
   initDb,
   ensureReady,
@@ -445,5 +551,7 @@ module.exports = {
   findDuplicate,
   findStreamsForStremio,
   getCatalogItems,
+  listEntries,
+  deleteEntries,
   groupKey
 };

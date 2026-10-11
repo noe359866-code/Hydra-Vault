@@ -34,9 +34,10 @@
   - Tipo con botones (Drama · Anime · Serie · Película), botones −/+ para temporada y episodio, `Ctrl + Enter` para guardar.
   - IDs de IMDb, Kitsu, TMDb y AniList aceptan la URL completa de la ficha; aviso si falta un ID.
   - Recuerda tus últimas opciones y muestra los guardados recientes (en el navegador, sin llamadas extra).
+  - Sección **Tus datos**: busca entre lo guardado, filtra por tipo, selecciona con casillas (o *Seleccionar todo*) y elimina uno o varios registros a la vez; cada fila tiene su botón *Eliminar* individual y todo pide confirmación antes de borrar.
   - Evita duplicados (mismo enlace y mismo episodio → `409`).
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
-  - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar.
+  - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar o gestionar datos.
 - **Compatibilidad Dual Vercel Serverless / Express:**
   - Despliegue en 1 clic en Vercel vía `api/index.js` y `vercel.json`.
   - O ejecución como servidor independiente Node.js (`npm start`) para Docker o VPS.
@@ -186,7 +187,8 @@ El panel está pensado para mantener bajo el consumo de la versión gratuita:
    El detector del magnet reconoce estos idiomas en el `dn` (`Inglés`/`Eng`, `Chino`/`CHS`/`Mandarin`, `Polaco`/`Polish`/`Lektor`, `Portugués`/`Dublado`, `Multi`, `Jap/Sub`…) y separa el idioma del audio de las marcas de subtítulos (`Sub Eng`, `Eng Sub`, `Multi Sub (Esp/Eng/Chn)`), que rellenan el campo *Subtítulos*.
 4. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
 5. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
-6. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
+6. En **Tus datos** (al final del panel) ves todo lo guardado en la base de datos: busca por título/enlace/ID o filtra por tipo, marca los registros con las casillas (o *Seleccionar todo*) y pulsa **Eliminar seleccionados** — o elimina de uno en uno con el botón *Eliminar* de cada fila. Siempre se pide confirmación antes de borrar, y la lista indica cuántos registros hay y cuáles están marcados.
+7. El navegador contacta al servidor solo para guardar (`POST /api/admin/add`), listar (`GET /api/admin/list`) y eliminar (`POST /api/admin/delete`); no consulta métricas ni realiza pruebas automáticas.
 
 `/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
 
@@ -194,7 +196,7 @@ El panel está pensado para mantener bajo el consumo de la versión gratuita:
 
 ## 📡 Endpoints
 
-La API REST de administración (`/api/vault`, `/api/health`, `/api/stats`, CRUD, bulk, parse-magnet) fue eliminada. Solo quedan el endpoint de guardado del panel y los endpoints de Stremio.
+La API REST de administración (`/api/vault`, `/api/health`, `/api/stats`, CRUD, bulk, parse-magnet) fue eliminada. Solo quedan los endpoints del panel de administración (guardar, listar y eliminar) y los endpoints de Stremio.
 
 ### Guardar contenido
 **`POST /api/admin/add`** *(requiere cabecera `x-admin-secret: <ADMIN_SECRET>`)*
@@ -226,6 +228,25 @@ Reglas de `season` / `episode` según `type`:
 | `series`, `drama` | obligatorio (≥ 0) | obligatorio (≥ 1) | `T1 · E03` |
 | `anime` | opcional | obligatorio — capítulo (≥ 1) | `Cap. 12` / `T2 · Cap. 05` |
 
+### Gestionar datos (listar y eliminar)
+
+**`GET /api/admin/list`** *(requiere cabecera `x-admin-secret: <ADMIN_SECRET>`)*
+
+Lista los registros guardados para buscar, seleccionar y eliminar desde `/admin`. Parámetros de consulta:
+
+| Parámetro | Descripción |
+|---|---|
+| `search` | Texto libre: busca en título, enlace, IDs (IMDb/TMDb/Kitsu/AniList/custom) y título del episodio. |
+| `type` | Filtra por `anime`, `series`, `movie` o `drama`. |
+| `page` | Página a partir de 1 (por defecto 1). |
+| `limit` | Registros por página, 1–100 (por defecto 20). |
+
+Respuesta: `{ "success": true, "data": { "items": [...], "total": 12, "page": 1, "pages": 3, "limit": 20 } }`.
+
+**`POST /api/admin/delete`** *(requiere cabecera `x-admin-secret: <ADMIN_SECRET>`)*
+
+Elimina uno o varios registros seleccionados. Cuerpo JSON con `{ "ids": [1, 2, 3] }` o un solo `{ "id": 1 }` (máximo 100 ids por petición). También acepta `DELETE`. Respuesta: `{ "success": true, "deleted": 2, "requested": 2, "ids": [1, 2] }` (incluye los ids realmente eliminados; los desconocidos simplemente no se borran).
+
 ### Endpoints nativos de Stremio
 - `GET /manifest.json`: Manifiesto del addon (protocolo v3).
 - `GET /stream/:type/:id.json`: Streams del título. Con episodio solo devuelve **ese** episodio/capítulo exacto y, detrás, los packs de temporada completa; nunca mezcla episodios.
@@ -248,7 +269,10 @@ Hydra-Vault/
 ├── vercel.json                  # Configuración de rutas y rewrites de Vercel
 ├── api/
 │   ├── index.js                 # Punto de entrada para Vercel Serverless
-│   └── admin/add.js             # POST /api/admin/add (guardar desde /admin)
+│   └── admin/
+│       ├── add.js               # POST /api/admin/add (guardar desde /admin)
+│       ├── list.js              # GET /api/admin/list (buscar/listar desde /admin)
+│       └── delete.js            # POST /api/admin/delete (eliminar seleccionados)
 ├── public/
 │   ├── index.html               # Landing pública estática
 │   ├── admin.html               # Formulario de administración estático
@@ -267,6 +291,7 @@ Hydra-Vault/
 │   │   ├── catalogHandler.js    # Proveedor de catálogos y filtros
 │   │   └── metaHandler.js       # Proveedor de metadatos
 │   └── utils/
+│       ├── adminAuth.js         # Comparación segura del secreto x-admin-secret
 │       ├── episodes.js          # Reglas de temporada/episodio/capítulo y parser de IDs de Stremio
 │       ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
 │       ├── titles.js            # Nombre limpio de la serie y pósters (Metahub / SVG)
