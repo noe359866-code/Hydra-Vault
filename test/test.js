@@ -201,6 +201,21 @@ async function runTests() {
       assert.strictEqual(res.body.data.episode_title, null);
     });
 
+    await test('Admin API: stores any audio/subtitle language (Inglés, Chino, Polaco…)', async () => {
+      const res = await addEntry({
+        title: 'Rare Movie 1987 1080p VO Polaco Sub Eng',
+        type: 'movie',
+        imdb_id: 'tt5550002',
+        magnet: MAGNET('c'),
+        quality: '1080p',
+        audio_lang: 'Polaco',
+        subtitles: 'Inglés / Chino'
+      });
+      assert.strictEqual(res.statusCode, 201);
+      assert.strictEqual(res.body.data.audio_lang, 'Polaco');
+      assert.strictEqual(res.body.data.subtitles, 'Inglés / Chino');
+    });
+
     await test('Stremio: each episode only returns its own stream (no mixing)', async () => {
       await addEntry({ title: 'Mix Show S01E01', type: 'series', imdb_id: 'tt6660001', season: 1, episode: 1, magnet: MAGNET(5) });
       await addEntry({ title: 'Mix Show S01E02', type: 'series', imdb_id: 'tt6660001', season: 1, episode: 2, magnet: MAGNET(6) });
@@ -320,11 +335,23 @@ async function runTests() {
       assert(res.raw.includes('Subtítulos'));
       assert(res.raw.includes('custom_id'));
 
+      // Listas de idiomas ampliadas: inglés, chino, coreano, portugués, polaco… y opción "Otro idioma…".
+      assert(res.raw.includes('<option value="Inglés">'));
+      assert(res.raw.includes('<option value="Chino/Sub">'));
+      assert(res.raw.includes('<option value="Coreano/Sub">'));
+      assert(res.raw.includes('<option value="Portugués">'));
+      assert(res.raw.includes('<option value="Polaco">'));
+      assert(res.raw.includes('Otro idioma…'));
+      assert(res.raw.includes('id="audio_lang_custom"'));
+      assert(res.raw.includes('id="subtitles_custom"'));
+
       const script = await request('/admin.js');
       assert.strictEqual(script.statusCode, 200);
       assert(script.raw.includes("fetch('/api/admin/add'"));
       assert(script.raw.includes('localStorage'));
       assert(script.raw.includes('subtitles: valueOf'));
+      assert(script.raw.includes('setLangField'));
+      assert(script.raw.includes("setLangField('audio_lang', 'Polaco')"));
     });
 
     // 4. Stremio Manifest & Fallback Routes

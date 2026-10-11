@@ -7,8 +7,8 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Administración — Hydra Vault</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=3">
-  <script src="/admin.js?v=3" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=4">
+  <script src="/admin.js?v=4" defer></script>
 </head>
 <body class="admin-page">
   <div class="site-shell admin-shell">
@@ -130,22 +130,118 @@
           <div class="field">
             <label for="audio_lang">Audio</label>
             <select id="audio_lang">
-              <option value="Latino">Latino</option>
-              <option value="Sub Español">Sub Español</option>
-              <option value="Castellano">Castellano</option>
-              <option value="Jap/Sub">Jap/Sub</option>
-              <option value="Dual Audio">Dual Audio</option>
-              <option value="Multi">Multi</option>
+              <optgroup label="Español">
+                <option value="Latino">Latino</option>
+                <option value="Castellano">Castellano</option>
+                <option value="Sub Español">Sub Español</option>
+                <option value="Dual Audio">Dual Audio</option>
+                <option value="VOSE">VOSE</option>
+                <option value="Latino / Castellano">Latino / Castellano</option>
+              </optgroup>
+              <optgroup label="Inglés">
+                <option value="Inglés">Inglés</option>
+                <option value="Inglés / Español">Inglés / Español</option>
+              </optgroup>
+              <optgroup label="Asiáticos">
+                <option value="Jap/Sub">Jap/Sub</option>
+                <option value="Coreano/Sub">Coreano/Sub</option>
+                <option value="Chino/Sub">Chino/Sub</option>
+                <option value="Mandarín">Mandarín</option>
+                <option value="Cantonés">Cantonés</option>
+                <option value="Tailandés/Sub">Tailandés/Sub</option>
+                <option value="Filipino/Sub">Filipino/Sub</option>
+                <option value="Hindi">Hindi</option>
+                <option value="Tamil">Tamil</option>
+                <option value="Telugu">Telugu</option>
+                <option value="Vietnamita">Vietnamita</option>
+                <option value="Indonesio">Indonesio</option>
+              </optgroup>
+              <optgroup label="Europa y otros">
+                <option value="Portugués">Portugués</option>
+                <option value="Portugués (Brasil)">Portugués (Brasil)</option>
+                <option value="Francés">Francés</option>
+                <option value="Italiano">Italiano</option>
+                <option value="Alemán">Alemán</option>
+                <option value="Ruso">Ruso</option>
+                <option value="Polaco">Polaco</option>
+                <option value="Ucraniano">Ucraniano</option>
+                <option value="Checo">Checo</option>
+                <option value="Húngaro">Húngaro</option>
+                <option value="Rumano">Rumano</option>
+                <option value="Neerlandés">Neerlandés</option>
+                <option value="Sueco">Sueco</option>
+                <option value="Danés">Danés</option>
+                <option value="Noruego">Noruego</option>
+                <option value="Finés">Finés</option>
+                <option value="Griego">Griego</option>
+                <option value="Turco">Turco</option>
+                <option value="Árabe">Árabe</option>
+                <option value="Hebreo">Hebreo</option>
+                <option value="Persa">Persa</option>
+              </optgroup>
+              <optgroup label="Otros">
+                <option value="Multi">Multi</option>
+                <option value="__otro__">Otro idioma…</option>
+              </optgroup>
             </select>
+            <input id="audio_lang_custom" class="lang-custom" type="text" maxlength="50" placeholder="Escribe el idioma (ej.: Sueco / Inglés)" hidden>
           </div>
           <div class="field">
             <label for="subtitles">Subtítulos</label>
             <select id="subtitles">
-              <option value="Español">Español</option>
-              <option value="Inglés">Inglés</option>
-              <option value="Multi">Multi</option>
-              <option value="Sin subtítulos">Sin subtítulos</option>
+              <optgroup label="Español">
+                <option value="Español">Español</option>
+                <option value="Español (Latino)">Español (Latino)</option>
+                <option value="Español forzados">Español forzados</option>
+              </optgroup>
+              <optgroup label="Inglés">
+                <option value="Inglés">Inglés</option>
+                <option value="Inglés forzados">Inglés forzados</option>
+              </optgroup>
+              <optgroup label="Varios idiomas">
+                <option value="Español / Inglés">Español / Inglés</option>
+                <option value="Multi">Multi</option>
+                <option value="Multi (Esp/Eng)">Multi (Esp/Eng)</option>
+                <option value="Sin subtítulos">Sin subtítulos</option>
+              </optgroup>
+              <optgroup label="Asiáticos">
+                <option value="Chino">Chino</option>
+                <option value="Chino tradicional">Chino tradicional</option>
+                <option value="Japonés">Japonés</option>
+                <option value="Coreano">Coreano</option>
+                <option value="Tailandés">Tailandés</option>
+                <option value="Vietnamita">Vietnamita</option>
+                <option value="Indonesio">Indonesio</option>
+                <option value="Hindi">Hindi</option>
+              </optgroup>
+              <optgroup label="Europa y otros">
+                <option value="Portugués">Portugués</option>
+                <option value="Portugués (Brasil)">Portugués (Brasil)</option>
+                <option value="Francés">Francés</option>
+                <option value="Italiano">Italiano</option>
+                <option value="Alemán">Alemán</option>
+                <option value="Ruso">Ruso</option>
+                <option value="Polaco">Polaco</option>
+                <option value="Ucraniano">Ucraniano</option>
+                <option value="Checo">Checo</option>
+                <option value="Húngaro">Húngaro</option>
+                <option value="Rumano">Rumano</option>
+                <option value="Neerlandés">Neerlandés</option>
+                <option value="Sueco">Sueco</option>
+                <option value="Danés">Danés</option>
+                <option value="Noruego">Noruego</option>
+                <option value="Finés">Finés</option>
+                <option value="Griego">Griego</option>
+                <option value="Turco">Turco</option>
+                <option value="Árabe">Árabe</option>
+                <option value="Hebreo">Hebreo</option>
+                <option value="Persa">Persa</option>
+              </optgroup>
+              <optgroup label="Otros">
+                <option value="__otro__">Otro idioma…</option>
+              </optgroup>
             </select>
+            <input id="subtitles_custom" class="lang-custom" type="text" maxlength="50" placeholder="Escribe los subtítulos (ej.: Polaco / Español)" hidden>
           </div>
           <div class="field">
             <label for="source_platform">Plataforma</label>
