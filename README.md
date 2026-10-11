@@ -76,8 +76,8 @@ CREATE TABLE hydra_vault (
     
     -- Detalles técnicos
     quality VARCHAR(20) DEFAULT '1080p',   -- Ej: '1080p', '4K', '720p'
-    audio_lang VARCHAR(50) DEFAULT 'Multi',-- Ej: 'Latino', 'Sub Español', 'Jap/Sub'
-    subtitles VARCHAR(50) DEFAULT 'Multi', -- Ej: 'Español', 'Inglés', 'Multi'
+    audio_lang VARCHAR(50) DEFAULT 'Multi',-- Ej: 'Latino', 'Sub Español', 'Inglés', 'Chino/Sub', 'Portugués', 'Polaco'
+    subtitles VARCHAR(50) DEFAULT 'Multi', -- Ej: 'Español', 'Inglés', 'Chino', 'Polaco', 'Multi'
     size VARCHAR(20) DEFAULT 'N/D',        -- Ej: '1.4 GB', '450 MB'
     seeders INT DEFAULT 10,
     
@@ -182,9 +182,11 @@ El panel está pensado para mantener bajo el consumo de la versión gratuita:
    - **Serie / Drama:** *Temporada* y *Episodio* obligatorios (se muestra como `T1 · E03`).
    - **Anime:** *Capítulo* obligatorio y *Temporada* opcional (se muestra como `Cap. 12`). Déjala vacía para numeración absoluta o IDs de Kitsu/AniList.
    - Si el título contiene `S01E03`, `1x03`, `Temporada 2`, `Capítulo 12`, `Episodio 5` o `Nombre - 12 (1080p)`, los números se rellenan automáticamente.
-3. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
-4. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
-5. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
+3. **Audio y subtítulos** con listas por idioma: español (Latino, Castellano, Sub Español, Dual, VOSE), inglés, coreano, chino (Mandarín/Cantonés), japonés, tailandés, filipino, hindi, tamil, telugu, vietnamita, indonesio, portugués (y PT-BR), francés, italiano, alemán, ruso, polaco, ucraniano, checo, húngaro, rumano, neerlandés, sueco, danés, noruego, finés, griego, turco, árabe, hebreo y persa. Con **Otro idioma…** se escribe cualquier valor libre (máx. 50 caracteres, igual que la columna `VARCHAR(50)`).
+   El detector del magnet reconoce estos idiomas en el `dn` (`Inglés`/`Eng`, `Chino`/`CHS`/`Mandarin`, `Polaco`/`Polish`/`Lektor`, `Portugués`/`Dublado`, `Multi`, `Jap/Sub`…) y separa el idioma del audio de las marcas de subtítulos (`Sub Eng`, `Eng Sub`, `Multi Sub (Esp/Eng/Chn)`), que rellenan el campo *Subtítulos*.
+4. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
+5. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
+6. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
 
 `/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
 
@@ -229,7 +231,7 @@ Reglas de `season` / `episode` según `type`:
 - `GET /stream/:type/:id.json`: Streams del título. Con episodio solo devuelve **ese** episodio/capítulo exacto y, detrás, los packs de temporada completa; nunca mezcla episodios.
   - `tt123:1:3` / `tmdb:55:1:3` → temporada 1, episodio 3 (anime sin temporada guardada cuenta como temporada 1).
   - `kitsu:46474:12` / `anilist:154587:12` → capítulo 12.
-- `GET /catalog/:type/:id.json`: Catálogo navegable desde Stremio.
+- `GET /catalog/:type/:id.json`: Catálogo navegable desde Stremio. El filtro *genre* acepta la plataforma (`Viki`, `iQiyi`, `Europa`, `América`), la calidad (`4K`, `1080p`) y el idioma (`Latino`, `Inglés`, `Chino`, `Portugués`, `Polaco`…), buscando también en `audio_lang` y `subtitles`.
 - `GET /meta/:type/:id.json`: Metadatos con la lista ordenada de temporadas/episodios (`kitsu:ID:CAP` para anime con Kitsu).
 
 ---

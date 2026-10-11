@@ -70,6 +70,37 @@ function setSelect(id, value) {
   if (value && [...select.options].some(option => option.value === value)) select.value = value;
 }
 
+// ---------------------------------------------------------------------------
+// Idiomas: listas con presets y opción "Otro idioma…" con campo libre
+// ---------------------------------------------------------------------------
+const CUSTOM_LANG = '__otro__';
+const LANG_FIELDS = { audio_lang: 'audio_lang_custom', subtitles: 'subtitles_custom' };
+
+// Muestra u oculta el campo libre según la opción elegida en el <select>.
+function syncLangField(id) {
+  const select = $(id);
+  const custom = $(LANG_FIELDS[id]);
+  if (!select || !custom) return;
+  const isCustom = select.value === CUSTOM_LANG;
+  custom.hidden = !isCustom;
+  if (!isCustom) custom.value = '';
+}
+
+// Acepta cualquier valor: si está en la lista lo selecciona y, si no, lo escribe en el campo libre.
+function setLangField(id, value) {
+  const select = $(id);
+  const custom = $(LANG_FIELDS[id]);
+  if (!select || !custom || !value) return;
+  if ([...select.options].some(option => option.value === value)) {
+    select.value = value;
+    custom.value = '';
+  } else {
+    select.value = CUSTOM_LANG;
+    custom.value = value;
+  }
+  syncLangField(id);
+}
+
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
@@ -272,12 +303,39 @@ function detectDetails(text) {
   else if (/720p/.test(t)) setSelect('quality', '720p');
   else if (/480p/.test(t)) setSelect('quality', '480p');
 
-  if (/dual/.test(t)) setSelect('audio_lang', 'Dual Audio');
-  else if (/latino|\blat\b/.test(t)) setSelect('audio_lang', 'Latino');
-  else if (/castellano|\bcast\b/.test(t)) setSelect('audio_lang', 'Castellano');
-  else if (/sub\s*esp|vose|subespañol/.test(t)) setSelect('audio_lang', 'Sub Español');
-  else if (/\bjap|japanese|japon/.test(t)) setSelect('audio_lang', 'Jap/Sub');
-  else if (/multi/.test(t)) setSelect('audio_lang', 'Multi');
+  // Audio: primero se descartan las marcas de subtítulos ("Sub Eng", "Eng Sub", "Multi Sub (Esp/Eng/Chn)").
+  const audioText = t
+    .replace(/\bsubs?\s*\([^)]*\)/g, ' ')
+    .replace(/\bsubs?\s*[a-z]{2,4}\b/g, ' ')
+    .replace(/\b[a-z]{2,3}\s*subs?\b/g, ' ')
+    .replace(/\bsubs?\b/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (/dual/.test(t)) setLangField('audio_lang', 'Dual Audio');
+  else if (/latino|\blat\b/.test(t)) setLangField('audio_lang', 'Latino');
+  else if (/castellano|\bcast\b/.test(t)) setLangField('audio_lang', 'Castellano');
+  else if (/sub\s*esp|vose|subespañol|spanish\s*sub/.test(t)) setLangField('audio_lang', 'Sub Español');
+  else if (/multi/.test(audioText)) setLangField('audio_lang', 'Multi');
+  else if (/\bjap|japanese|japon/.test(audioText)) setLangField('audio_lang', 'Jap/Sub');
+  else if (/\bkor(ean)?\b|coreano/.test(audioText)) setLangField('audio_lang', 'Coreano/Sub');
+  else if (/chino?|chinese|mandarin|mandar[ií]n|canton[eé]s|cantonese|\bchs\b|\bcht\b|\bchn\b/.test(audioText)) setLangField('audio_lang', 'Chino/Sub');
+  else if (/\bthai\b|tailand[eé]s/.test(audioText)) setLangField('audio_lang', 'Tailandés/Sub');
+  else if (/\bhindi\b/.test(audioText)) setLangField('audio_lang', 'Hindi');
+  else if (/\bingl[eé]s\b|\benglish\b|\beng\b/.test(audioText)) setLangField('audio_lang', 'Inglés');
+  else if (/portugu[eê]s|portuguese|dublado|\bpt[- ]?br\b/.test(audioText)) setLangField('audio_lang', 'Portugués');
+  else if (/polish|polaco|lektor|\bpl\b/.test(audioText)) setLangField('audio_lang', 'Polaco');
+  else if (/franc[eé]s|french|\btruefrench\b|\bvf\b/.test(audioText)) setLangField('audio_lang', 'Francés');
+  else if (/alem[aá]n|german|deutsch/.test(audioText)) setLangField('audio_lang', 'Alemán');
+  else if (/\bitalian(o)?\b|\bita\b/.test(audioText)) setLangField('audio_lang', 'Italiano');
+  else if (/\bruso\b|russian/.test(audioText)) setLangField('audio_lang', 'Ruso');
+  else if (/\bturco\b|turkish/.test(audioText)) setLangField('audio_lang', 'Turco');
+  else if (/\b[aá]rabe\b|arabic/.test(audioText)) setLangField('audio_lang', 'Árabe');
+
+  // Subtítulos: solo cuando el título lo indica de forma clara.
+  if (/sub\s*esp|subespañol|vose|spanish\s*sub/.test(t)) setLangField('subtitles', 'Español');
+  else if (/\b(eng|english)\s*sub|\bsubs?\s*(eng|english)\b/.test(t)) setLangField('subtitles', 'Inglés');
+  else if (/\b(chs|cht|chinese)\s*sub|\bsubs?\s*(chs|cht|chinese)\b/.test(t)) setLangField('subtitles', 'Chino');
+  else if (/\bpolish\s*sub|\bsubs?\s*pol(ish)?\b/.test(t)) setLangField('subtitles', 'Polaco');
 
   if (/\bviki\b/.test(t)) setSelect('source_platform', 'Viki');
   else if (/iqiyi/.test(t)) setSelect('source_platform', 'iQiyi');
@@ -386,7 +444,10 @@ function loadPrefs() {
     const radio = form.querySelector(`input[name="type"][value="${prefs.type}"]`);
     if (radio) radio.checked = true;
   }
-  PREF_FIELDS.forEach(field => setSelect(field, prefs[field]));
+  PREF_FIELDS.forEach(field => {
+    if (LANG_FIELDS[field]) setLangField(field, prefs[field]);
+    else setSelect(field, prefs[field]);
+  });
 }
 
 function savePrefs(payload) {
@@ -469,6 +530,13 @@ form.addEventListener('submit', async (event) => {
   if (link.empty || !link.valid) return invalid(magnetInput, 'Pega un enlace magnet, hash o URL válido.');
   if (!valueOf('title')) return invalid(titleInput, 'Escribe un título.');
 
+  if (valueOf('audio_lang') === CUSTOM_LANG && !valueOf('audio_lang_custom')) {
+    return invalid($('audio_lang_custom'), 'Escribe el idioma de audio o elige una opción de la lista.');
+  }
+  if (valueOf('subtitles') === CUSTOM_LANG && !valueOf('subtitles_custom')) {
+    return invalid($('subtitles_custom'), 'Escribe los subtítulos o elige una opción de la lista.');
+  }
+
   const type = getType();
   const rules = TYPE_RULES[type];
   const seasonText = rules ? valueOf('season') : '';
@@ -496,8 +564,8 @@ form.addEventListener('submit', async (event) => {
     title: valueOf('title'),
     magnet: valueOf('magnet'),
     quality: valueOf('quality'),
-    audio_lang: valueOf('audio_lang'),
-    subtitles: valueOf('subtitles'),
+    audio_lang: valueOf('audio_lang') === CUSTOM_LANG ? (valueOf('audio_lang_custom') || 'Multi') : valueOf('audio_lang'),
+    subtitles: valueOf('subtitles') === CUSTOM_LANG ? (valueOf('subtitles_custom') || 'Multi') : valueOf('subtitles'),
     size: valueOf('size') || 'N/D',
     seeders: Number.isFinite(parsedSeeders) ? parsedSeeders : 10
   };
@@ -567,6 +635,15 @@ document.addEventListener('keydown', (event) => {
 // ---------------------------------------------------------------------------
 // Inicio
 // ---------------------------------------------------------------------------
+// Idiomas: muestra el campo libre al elegir «Otro idioma…» y lo oculta al volver a un preset.
+Object.keys(LANG_FIELDS).forEach(id => {
+  $(id).addEventListener('change', () => {
+    syncLangField(id);
+    if ($(id).value === CUSTOM_LANG) $(LANG_FIELDS[id]).focus();
+  });
+  syncLangField(id);
+});
+
 loadPrefs();
 applyTypeRules();
 renderRecent();

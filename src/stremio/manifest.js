@@ -35,7 +35,7 @@ function getManifest(baseUrl = '') {
         type: 'series',
         name: 'Hydra Asian Dramas (Viki & iQiyi)',
         extra: [
-          { name: 'genre', isRequired: false, options: ['All', 'Viki', 'iQiyi', 'Latino', 'Sub Español'] },
+          { name: 'genre', isRequired: false, options: ['All', 'Viki', 'iQiyi', 'Latino', 'Sub Español', 'Inglés', 'Chino', 'Portugués', 'Polaco'] },
           { name: 'search', isRequired: false },
           { name: 'skip', isRequired: false }
         ]
@@ -45,7 +45,7 @@ function getManifest(baseUrl = '') {
         type: 'anime',
         name: 'Hydra Anime Vault',
         extra: [
-          { name: 'genre', isRequired: false, options: ['All', 'Latino', 'Jap/Sub', 'Multi'] },
+          { name: 'genre', isRequired: false, options: ['All', 'Latino', 'Jap/Sub', 'Multi', 'Inglés', 'Chino'] },
           { name: 'search', isRequired: false },
           { name: 'skip', isRequired: false }
         ]
@@ -55,7 +55,7 @@ function getManifest(baseUrl = '') {
         type: 'movie',
         name: 'Hydra Rare Movies & Exclusives',
         extra: [
-          { name: 'genre', isRequired: false, options: ['All', '4K', '1080p', 'Europa', 'América'] },
+          { name: 'genre', isRequired: false, options: ['All', '4K', '1080p', 'Inglés', 'Polaco', 'Europa', 'América'] },
           { name: 'search', isRequired: false },
           { name: 'skip', isRequired: false }
         ]
@@ -65,7 +65,7 @@ function getManifest(baseUrl = '') {
         type: 'series',
         name: 'Hydra Curated Series',
         extra: [
-          { name: 'genre', isRequired: false, options: ['All', 'Viki', 'iQiyi', 'Europa', 'América'] },
+          { name: 'genre', isRequired: false, options: ['All', 'Viki', 'iQiyi', 'Inglés', 'Chino', 'Portugués', 'Polaco', 'Europa', 'América'] },
           { name: 'search', isRequired: false },
           { name: 'skip', isRequired: false }
         ]
