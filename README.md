@@ -13,7 +13,7 @@
 - [Ejecución Local / Servidor VPS](#-ejecución-local--servidor-vps)
 - [Instalación en Stremio](#-instalación-en-stremio)
 - [Panel de Administración Web](#-panel-de-administración-web)
-- [Referencia de la API REST](#-referencia-de-la-api-rest)
+- [Endpoints](#-endpoints)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Pruebas Automatizadas](#-pruebas-automatizadas)
 
@@ -30,9 +30,13 @@
   - Cliente oficial `pg` con SSL y pool limitado por defecto a una conexión por instancia serverless (`PG_MAX` permite ajustarlo).
   - La inicialización de esquema es bajo demanda; modo memoria disponible en desarrollo sin conexión.
 - **Panel de Administración (`/admin`):**
-  - Formulario responsivo con campos completos y detalles opcionales plegables.
+  - Pega el magnet y se rellenan solos título, calidad, audio, plataforma, tamaño, temporada y episodio/capítulo.
+  - Tipo con botones (Drama · Anime · Serie · Película), botones −/+ para temporada y episodio, `Ctrl + Enter` para guardar.
+  - IDs de IMDb, Kitsu, TMDb y AniList aceptan la URL completa de la ficha; aviso si falta un ID.
+  - Recuerda tus últimas opciones y muestra los guardados recientes (en el navegador, sin llamadas extra).
+  - Evita duplicados (mismo enlace y mismo episodio → `409`).
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
-  - Sin sondeos ni llamadas de prueba automáticas: solo se invoca el API al guardar.
+  - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar.
 - **Compatibilidad Dual Vercel Serverless / Express:**
   - Despliegue en 1 clic en Vercel vía `api/index.js` y `vercel.json`.
   - O ejecución como servidor independiente Node.js (`npm start`) para Docker o VPS.
@@ -45,7 +49,7 @@
 - **Framework Web:** Express.js 4
 - **Base de Datos:** PostgreSQL con cliente oficial `pg` (`Pool` con reconexión y `rejectUnauthorized: false` para Layerbase/Neon/Supabase)
 - **CORS:** Habilitado para todos los orígenes (`*`) según especificación de addons de Stremio.
-- **Frontend Admin & Landing:** páginas estáticas sin build; la portada usa recursos locales y `/admin` usa Tailwind Play CDN.
+- **Frontend Admin & Landing:** páginas estáticas sin build ni CDN; ambas comparten `public/styles.css`.
 
 ---
 
@@ -97,6 +101,9 @@ ADMIN_SECRET=mi_super_secreto_seguro_2026
 # Puerto para modo Express independiente (por defecto: 7000)
 PORT=7000
 
+# Solo pruebas: insertar datos demo si la tabla está vacía (nunca en producción)
+SEED_DEMO_DATA=false
+
 # Entorno de Node ('production' o 'development')
 NODE_ENV=production
 ```
@@ -107,7 +114,7 @@ NODE_ENV=production
 
 ## 🚀 Despliegue en Vercel Serverless
 
-El repositorio entrega la página pública y `/admin` como archivos estáticos. Solo los endpoints dinámicos (Stremio y API) usan funciones serverless; catálogos, metadatos, streams y `/api/vault` se cachean 60 segundos, y el manifiesto una hora.
+El repositorio entrega la página pública y `/admin` como archivos estáticos. Solo los endpoints dinámicos (Stremio y `POST /api/admin/add`) usan funciones serverless; catálogos, metadatos y streams se cachean 60 segundos, y el manifiesto una hora.
 
 ### Pasos para desplegar:
 
@@ -169,154 +176,61 @@ El servidor escuchará en `http://localhost:7000`:
 
 El panel está pensado para mantener bajo el consumo de la versión gratuita:
 
-1. Ingresa `ADMIN_SECRET` y completa título, enlace y tipo.
-2. Abre **Más detalles** solo si necesitas cargar calidad, idioma o identificadores.
-3. Pulsa **Guardar contenido**. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
+1. Ingresa `ADMIN_SECRET` una vez (queda guardada) y pega el enlace magnet: título, calidad, audio, tamaño y episodio se rellenan solos.
+2. Según el **Tipo**, el formulario cambia solo:
+   - **Película:** se ocultan temporada y episodio.
+   - **Serie / Drama:** *Temporada* y *Episodio* obligatorios (se muestra como `T1 · E03`).
+   - **Anime:** *Capítulo* obligatorio y *Temporada* opcional (se muestra como `Cap. 12`). Déjala vacía para numeración absoluta o IDs de Kitsu/AniList.
+   - Si el título contiene `S01E03`, `1x03`, `Temporada 2`, `Capítulo 12`, `Episodio 5` o `Nombre - 12 (1080p)`, los números se rellenan automáticamente.
+3. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
+4. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
+5. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
 
-`/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. Tailwind se carga desde su CDN (petición externa al navegador; no es una función de Vercel). El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
-
----
-
-## 📡 Referencia de la API REST
-
-### Autenticación
-Los endpoints protegidos requieren el token `ADMIN_SECRET` mediante cualquiera de estas opciones:
-- Cabecera: `Authorization: Bearer <ADMIN_SECRET>`
-- Cabecera: `x-admin-secret: <ADMIN_SECRET>`
-- Query parameter: `?secret=<ADMIN_SECRET>`
+`/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
 
 ---
 
-### 1. Insertar Contenido en el Vault
-**`POST /api/admin/add`** *(Protegido)*
+## 📡 Endpoints
 
-**Cabeceras:**
-```http
-Content-Type: application/json
-x-admin-secret: <ADMIN_SECRET>
-```
+La API REST de administración (`/api/vault`, `/api/health`, `/api/stats`, CRUD, bulk, parse-magnet) fue eliminada. Solo quedan el endpoint de guardado del panel y los endpoints de Stremio.
 
-**Cuerpo (JSON):**
+### Guardar contenido
+**`POST /api/admin/add`** *(requiere cabecera `x-admin-secret: <ADMIN_SECRET>`)*
+
 ```json
 {
   "imdb_id": "tt21344706",
-  "tmdb_id": "136283",
-  "anilist_id": null,
   "kitsu_id": null,
-  "custom_id": "viki-the-glory-s01",
   "type": "drama",
+  "season": 1,
+  "episode": 3,
+  "episode_title": "La venganza",
   "source_platform": "Viki",
-  "title": "The Glory S01 1080p Viki Dual Latino",
+  "title": "The Glory S01E03 1080p Viki Dual Latino",
   "magnet": "magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=The+Glory",
   "quality": "1080p",
   "audio_lang": "Latino / Coreano",
   "subtitles": "Español",
-  "size": "14.2 GB",
+  "size": "1.4 GB",
   "seeders": 85
 }
 ```
 
-**Respuesta (201 Created):**
-```json
-{
-  "success": true,
-  "message": "Contenido insertado correctamente en Layerbase PostgreSQL.",
-  "data": {
-    "id": 1,
-    "type": "drama",
-    "source_platform": "Viki",
-    "title": "The Glory S01 1080p Viki Dual Latino",
-    "quality": "1080p",
-    "audio_lang": "Latino / Coreano",
-    "subtitles": "Español",
-    "size": "14.2 GB",
-    "seeders": 85
-  }
-}
-```
----
+Reglas de `season` / `episode` según `type`:
 
-### 2. Listar Entradas
-**`GET /api/vault?type=drama&platform=Viki&search=glory&page=1&limit=50&sort=newest`**
+| `type` | `season` | `episode` | Ejemplo en Stremio |
+|---|---|---|---|
+| `movie` | se ignora (`null`) | se ignora (`null`) | — |
+| `series`, `drama` | obligatorio (≥ 0) | obligatorio (≥ 1) | `T1 · E03` |
+| `anime` | opcional | obligatorio — capítulo (≥ 1) | `Cap. 12` / `T2 · Cap. 05` |
 
----
-
-### 3. Actualizar Entrada
-**`PUT /api/vault/:id`** *(Protegido)*
-
-```json
-{
-  "quality": "4K",
-  "seeders": 120
-}
-```
-
----
-
-### 4. Eliminar Entrada
-**`DELETE /api/vault/:id`** *(Protegido)*
-
----
-
-### 5. Importación Masiva
-**`POST /api/vault/bulk`** *(Protegido)*
-
-```json
-{
-  "entries": [
-    {
-      "title": "Drama 1",
-      "magnet": "magnet:?...",
-      "type": "drama",
-      "source_platform": "Viki"
-    },
-    {
-      "title": "Drama 2",
-      "magnet": "magnet:?...",
-      "type": "drama",
-      "source_platform": "iQiyi"
-    }
-  ]
-}
-```
-
----
-
-### 6. Analizador de Enlaces Magnet
-**`POST /api/vault/parse-magnet`**
-
-**Cuerpo:**
-```json
-{
-  "magnet": "magnet:?xt=urn:btih:d624a91a92e105e45a20340b17163c4ff9841f84&dn=Frieren+S01+1080p+Latino&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337"
-}
-```
-
-**Respuesta:**
-```json
-{
-  "parsed": {
-    "isValid": true,
-    "infoHash": "d624a91a92e105e45a20340b17163c4ff9841f84",
-    "dn": "Frieren S01 1080p Latino",
-    "sources": ["tracker:udp://tracker.opentrackr.org:1337"]
-  },
-  "suggestions": {
-    "title": "Frieren S01 1080p Latino",
-    "quality": "1080p",
-    "audio_lang": "Latino",
-    "size": "N/D"
-  }
-}
-```
-
----
-
-### 7. Endpoints Nativos de Stremio
-- `GET /manifest.json`: Manifiesto del addon según el protocolo oficial v3.
-- `GET /stream/:type/:id.json`: Devuelve `{ "streams": [ { "name": "...", "title": "...", "infoHash": "...", "sources": [...] } ] }`.
-- `GET /catalog/:type/:id.json`: Catálogo navegable desde la interfaz de Stremio.
-- `GET /meta/:type/:id.json`: Metadatos enriquecidos de reproducción.
+### Endpoints nativos de Stremio
+- `GET /manifest.json`: Manifiesto del addon (protocolo v3).
+- `GET /stream/:type/:id.json`: Streams del título. Con episodio solo devuelve **ese** episodio/capítulo exacto y, detrás, los packs de temporada completa; nunca mezcla episodios.
+  - `tt123:1:3` / `tmdb:55:1:3` → temporada 1, episodio 3 (anime sin temporada guardada cuenta como temporada 1).
+  - `kitsu:46474:12` / `anilist:154587:12` → capítulo 12.
+- `GET /catalog/:type/:id.json`: Catálogo navegable desde Stremio.
+- `GET /meta/:type/:id.json`: Metadatos con la lista ordenada de temporadas/episodios (`kitsu:ID:CAP` para anime con Kitsu).
 
 ---
 
@@ -331,7 +245,8 @@ Hydra-Vault/
 ├── server.js                    # Servidor Express independiente (0.0.0.0)
 ├── vercel.json                  # Configuración de rutas y rewrites de Vercel
 ├── api/
-│   └── index.js                 # Punto de entrada para Vercel Serverless
+│   ├── index.js                 # Punto de entrada para Vercel Serverless
+│   └── admin/add.js             # POST /api/admin/add (guardar desde /admin)
 ├── public/
 │   ├── index.html               # Landing pública estática
 │   ├── admin.html               # Formulario de administración estático
@@ -342,10 +257,7 @@ Hydra-Vault/
 │   ├── app.js                   # Configuración de Express, CORS y middleware
 │   ├── config.js                # Gestión centralizada de configuración
 │   ├── db.js                    # Cliente PostgreSQL oficial 'pg' + Fallback en memoria
-│   ├── middleware/
-│   │   └── auth.js              # Middleware de verificación ADMIN_SECRET
 │   ├── routes/
-│   │   ├── api.js               # Rutas REST de administración y CRUD
 │   │   └── stremio.js           # Rutas del protocolo Stremio Addon v3
 │   ├── stremio/
 │   │   ├── manifest.js          # Definición del manifiesto oficial v3
@@ -353,7 +265,9 @@ Hydra-Vault/
 │   │   ├── catalogHandler.js    # Proveedor de catálogos y filtros
 │   │   └── metaHandler.js       # Proveedor de metadatos
 │   └── utils/
+│       ├── episodes.js          # Reglas de temporada/episodio/capítulo y parser de IDs de Stremio
 │       ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
+│       ├── titles.js            # Nombre limpio de la serie y pósters (Metahub / SVG)
 │       └── seedData.js          # Catálogo curado inicial de ejemplo
 └── test/
     └── test.js                  # Batería completa de pruebas unitarias y de integración
@@ -373,7 +287,11 @@ Valida:
 - Conversión y extracción de hash BTIH en Hexadecimal (40 chars) y Base32 (32 chars).
 - Extracción de trackers públicos y enlaces directos HTTP/HTTPS.
 - Validez del protocolo Stremio v3 (`manifest.json`, stream resolution, catalog metas).
-- Seguridad y autenticación en la API (`401`, `403` y `201`).
+- Seguridad del guardado (`401` y `201`) y reglas de temporada/episodio/capítulo por tipo.
+- Que cada episodio de serie y cada capítulo de anime (IMDb y Kitsu) devuelva solo su propio stream.
+- Catálogo agrupado (un elemento por título, nombre limpio, póster real), IDs desde URL y duplicados (`409`).
+
+Para probar contra PostgreSQL real: `LAYERBASE_DATABASE_URL=postgres://… SEED_DEMO_DATA=true npm test` (usa una base vacía de pruebas).
 - Estricta correspondencia con las columnas de `hydra_vault`.
 - Renderizado de vistas HTML (`/` y `/admin`).
 

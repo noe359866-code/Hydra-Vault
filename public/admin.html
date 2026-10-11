@@ -3,73 +3,153 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f8fafc">
+  <meta name="theme-color" content="#f5f7f6">
   <meta name="robots" content="noindex, nofollow">
   <title>Administración — Hydra Vault</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="/admin.js" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <script src="/admin.js?v=3" defer></script>
 </head>
-<body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-  <div class="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
-    <header class="mb-8 flex items-center justify-between border-b border-slate-200 pb-5">
-      <a class="flex items-center gap-3 text-inherit no-underline" href="/">
-        <img src="/favicon.svg" alt="" width="36" height="36" class="h-9 w-9">
-        <span class="text-lg font-bold tracking-tight">Hydra <span class="text-emerald-700">Vault</span></span>
+<body class="admin-page">
+  <div class="site-shell admin-shell">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Hydra Vault, inicio">
+        <img class="brand-mark" src="/favicon.svg" alt="" width="34" height="34">
+        <span class="brand-name">Hydra <span>Vault</span></span>
       </a>
-      <a href="/" class="text-sm font-medium text-slate-500 hover:text-emerald-800">Volver al inicio</a>
+      <a class="header-link" href="/">Ver add-on</a>
     </header>
 
-    <main>
-      <div class="mb-6">
-        <p class="mb-2 text-xs font-bold uppercase tracking-widest text-emerald-700">Panel privado</p>
-        <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Agregar contenido</h1>
-        <p class="mt-2 text-sm leading-6 text-slate-600">Guarda un stream curado en Layerbase. Los campos marcados con * son obligatorios.</p>
+    <main class="admin-main">
+      <div class="page-intro">
+        <p class="eyebrow">Panel privado</p>
+        <h1>Agregar contenido</h1>
+        <p>Pega el enlace: título, calidad, audio, temporada y episodio se rellenan solos.</p>
       </div>
 
-      <section class="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="auth-title">
-        <div class="mb-3 flex items-center justify-between gap-4">
-          <div>
-            <h2 id="auth-title" class="text-sm font-semibold">Clave de administrador</h2>
-            <p class="mt-1 text-xs text-slate-500">Se conserva en este navegador para las próximas visitas.</p>
-          </div>
-          <button id="forget-secret" type="button" class="shrink-0 text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-rose-700">Borrar clave</button>
+      <!-- Clave de administrador -->
+      <section class="key-bar" id="key-bar" aria-labelledby="key-title">
+        <div class="key-saved" id="key-saved" hidden>
+          <span class="key-dot" aria-hidden="true"></span>
+          <span id="key-title-saved"><strong>Clave de administrador</strong> guardada en este navegador</span>
+          <button type="button" class="link-button" id="change-secret">Cambiar</button>
+          <button type="button" class="link-button link-danger" id="forget-secret">Borrar clave</button>
         </div>
-        <input id="admin-secret" type="password" autocomplete="off" placeholder="Pega aquí ADMIN_SECRET" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-        <p class="mt-2 text-xs leading-5 text-slate-500">La clave se guarda en <code class="rounded bg-slate-100 px-1 py-0.5">localStorage</code> y solo se envía al servidor en la cabecera <code class="rounded bg-slate-100 px-1 py-0.5">x-admin-secret</code> al guardar.</p>
-        <p class="mt-1 text-xs leading-5 text-amber-800">No la guardes en dispositivos compartidos. Los scripts del mismo origen pueden leer localStorage.</p>
+        <div class="key-edit" id="key-edit">
+          <label id="key-title" for="admin-secret">Clave de administrador</label>
+          <div class="key-row">
+            <input id="admin-secret" type="password" autocomplete="off" placeholder="Pega aquí ADMIN_SECRET">
+            <button type="button" class="button button-secondary" id="save-secret">Guardar</button>
+          </div>
+          <small>Se guarda en <code>localStorage</code> de este navegador y solo se envía al guardar contenido. No la guardes en equipos compartidos.</small>
+        </div>
       </section>
 
-      <form id="add-form" class="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div>
-          <label for="title" class="mb-1.5 block text-sm font-semibold">Título *</label>
-          <input id="title" type="text" maxlength="1000" required placeholder="Ej.: The Glory S01 1080p Viki Dual Latino" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+      <form id="add-form" class="form-card" novalidate>
+        <!-- 1. Enlace -->
+        <div class="field">
+          <label for="magnet">Enlace magnet o URL <span>*</span></label>
+          <textarea id="magnet" rows="2" required spellcheck="false" placeholder="magnet:?xt=urn:btih:…  o  https://…"></textarea>
+          <p class="link-status" id="link-status" aria-live="polite"></p>
         </div>
 
-        <div id="episode-fields" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div><label for="season" class="mb-1.5 block text-sm font-semibold">Temporada</label><input id="season" type="number" min="0" step="1" placeholder="1" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <div><label for="episode" class="mb-1.5 block text-sm font-semibold">Episodio / capítulo</label><input id="episode" type="number" min="1" step="1" placeholder="3" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <div><label for="episode_title" class="mb-1.5 block text-sm font-semibold">Título del episodio</label><input id="episode_title" type="text" maxlength="300" placeholder="Ej. La llegada" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <p class="sm:col-span-3 text-xs text-slate-500">Para películas, deja estos campos vacíos. Para series, dramas y anime, indica temporada y episodio juntos.</p>
-        </div>
-        <div>
-          <label for="magnet" class="mb-1.5 block text-sm font-semibold">Enlace magnet o URL *</label>
-          <textarea id="magnet" rows="3" required placeholder="magnet:?xt=urn:btih:… o https://…" class="w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"></textarea>
+        <!-- 2. Tipo -->
+        <fieldset class="field type-field">
+          <legend>Tipo <span>*</span></legend>
+          <div class="segmented" role="radiogroup">
+            <label><input type="radio" name="type" value="drama" checked><span>Drama</span></label>
+            <label><input type="radio" name="type" value="anime"><span>Anime</span></label>
+            <label><input type="radio" name="type" value="series"><span>Serie</span></label>
+            <label><input type="radio" name="type" value="movie"><span>Película</span></label>
+          </div>
+        </fieldset>
+
+        <!-- 3. Título -->
+        <div class="field">
+          <label for="title">Título <span>*</span></label>
+          <input id="title" type="text" maxlength="1000" required placeholder="Ej.: The Glory S01E03 1080p Viki Dual Latino">
         </div>
 
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label for="type" class="mb-1.5 block text-sm font-semibold">Tipo *</label>
-            <select id="type" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-              <option value="drama">Drama asiático</option>
-              <option value="anime">Anime</option>
-              <option value="series">Serie</option>
-              <option value="movie">Película</option>
+        <!-- 4. Temporada / episodio / capítulo -->
+        <fieldset id="episode-fields" class="episode-box">
+          <legend id="episode-legend">Temporada y episodio</legend>
+          <div class="episode-grid">
+            <div class="field" id="season-wrap">
+              <label id="season-label" for="season">Temporada *</label>
+              <div class="stepper">
+                <button type="button" data-step="season" data-delta="-1" aria-label="Temporada anterior">−</button>
+                <input id="season" type="number" min="0" step="1" inputmode="numeric" placeholder="—">
+                <button type="button" data-step="season" data-delta="1" aria-label="Temporada siguiente">+</button>
+              </div>
+            </div>
+            <div class="field">
+              <label id="episode-label" for="episode">Episodio *</label>
+              <div class="stepper">
+                <button type="button" data-step="episode" data-delta="-1" aria-label="Episodio anterior">−</button>
+                <input id="episode" type="number" min="1" step="1" inputmode="numeric" placeholder="—">
+                <button type="button" data-step="episode" data-delta="1" aria-label="Episodio siguiente">+</button>
+              </div>
+            </div>
+            <div class="field episode-title-field">
+              <label id="episode-title-label" for="episode_title">Título del episodio</label>
+              <input id="episode_title" type="text" maxlength="300" placeholder="Opcional">
+            </div>
+          </div>
+          <p class="hint" id="episode-help"></p>
+          <p class="preview-chip" id="episode-preview" hidden></p>
+        </fieldset>
+
+        <!-- 5. Dónde aparece en Stremio -->
+        <fieldset class="ids-box">
+          <legend>¿Dónde aparece en Stremio?</legend>
+          <div class="field-grid">
+            <div class="field">
+              <label for="imdb_id">IMDb</label>
+              <input id="imdb_id" type="text" maxlength="300" placeholder="tt1234567 o URL de IMDb">
+            </div>
+            <div class="field">
+              <label for="kitsu_id">Kitsu <small class="inline-hint">(anime)</small></label>
+              <input id="kitsu_id" type="text" maxlength="300" placeholder="46474 o URL de Kitsu">
+            </div>
+          </div>
+          <p class="hint" id="ids-hint">Pega el ID o la URL de la ficha. Con IMDb aparece junto a la ficha oficial de Stremio, con póster real.</p>
+        </fieldset>
+
+        <!-- 6. Detalles rápidos -->
+        <div class="field-grid field-grid-4">
+          <div class="field">
+            <label for="quality">Calidad</label>
+            <select id="quality">
+              <option value="1080p">1080p</option>
+              <option value="4K">4K</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+              <option value="Remux">Remux</option>
             </select>
           </div>
-          <div>
-            <label for="source_platform" class="mb-1.5 block text-sm font-semibold">Plataforma de origen</label>
-            <select id="source_platform" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+          <div class="field">
+            <label for="audio_lang">Audio</label>
+            <select id="audio_lang">
+              <option value="Latino">Latino</option>
+              <option value="Sub Español">Sub Español</option>
+              <option value="Castellano">Castellano</option>
+              <option value="Jap/Sub">Jap/Sub</option>
+              <option value="Dual Audio">Dual Audio</option>
+              <option value="Multi">Multi</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="subtitles">Subtítulos</label>
+            <select id="subtitles">
+              <option value="Español">Español</option>
+              <option value="Inglés">Inglés</option>
+              <option value="Multi">Multi</option>
+              <option value="Sin subtítulos">Sin subtítulos</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="source_platform">Plataforma</label>
+            <select id="source_platform">
               <option value="Torrent">Torrent</option>
               <option value="Viki">Viki</option>
               <option value="iQiyi">iQiyi</option>
@@ -80,76 +160,49 @@
           </div>
         </div>
 
-        <details class="rounded-lg border border-slate-200 px-4 py-3">
-          <summary class="cursor-pointer text-sm font-semibold text-slate-700">Detalles técnicos e identificadores</summary>
-          <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label for="quality" class="mb-1.5 block text-sm font-medium">Calidad</label>
-              <select id="quality" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-                <option value="1080p">1080p</option>
-                <option value="4K">4K</option>
-                <option value="720p">720p</option>
-                <option value="Remux">Remux</option>
-              </select>
+        <details class="optional-fields" id="more-options">
+          <summary>Más opciones <span>TMDb, AniList, ID personalizado, tamaño, seeders</span></summary>
+          <div class="field-grid optional-grid">
+            <div class="field">
+              <label for="tmdb_id">TMDb ID</label>
+              <input id="tmdb_id" type="text" maxlength="300" placeholder="12345 o URL de TMDb">
             </div>
-            <div>
-              <label for="audio_lang" class="mb-1.5 block text-sm font-medium">Audio</label>
-              <select id="audio_lang" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-                <option value="Latino">Latino</option>
-                <option value="Sub Español">Sub Español</option>
-                <option value="Castellano">Castellano</option>
-                <option value="Jap/Sub">Jap/Sub</option>
-                <option value="Dual Audio">Dual Audio</option>
-                <option value="Multi">Multi</option>
-              </select>
+            <div class="field">
+              <label for="anilist_id">AniList ID</label>
+              <input id="anilist_id" type="text" maxlength="300" placeholder="154587 o URL de AniList">
             </div>
-            <div>
-              <label for="subtitles" class="mb-1.5 block text-sm font-medium">Subtítulos</label>
-              <select id="subtitles" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-                <option value="Español">Español</option>
-                <option value="Inglés">Inglés</option>
-                <option value="Multi">Multi</option>
-                <option value="Sin subtítulos">Sin subtítulos</option>
-              </select>
+            <div class="field field-wide">
+              <label for="custom_id">ID personalizado (custom_id)</label>
+              <input id="custom_id" type="text" maxlength="100" placeholder="viki-the-glory">
+              <small>Úsalo cuando no hay IMDb/Kitsu: agrupa todos los episodios del mismo título. Sin “:”.</small>
             </div>
-            <div>
-              <label for="size" class="mb-1.5 block text-sm font-medium">Tamaño</label>
-              <input id="size" type="text" maxlength="20" value="N/D" placeholder="1.4 GB" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+            <div class="field">
+              <label for="size">Tamaño</label>
+              <input id="size" type="text" maxlength="20" placeholder="1.4 GB">
             </div>
-            <div>
-              <label for="seeders" class="mb-1.5 block text-sm font-medium">Seeders</label>
-              <input id="seeders" type="number" min="0" step="1" value="10" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-            </div>
-            <div>
-              <label for="imdb_id" class="mb-1.5 block text-sm font-medium">IMDb ID</label>
-              <input id="imdb_id" type="text" maxlength="50" placeholder="tt1234567" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-            </div>
-            <div>
-              <label for="tmdb_id" class="mb-1.5 block text-sm font-medium">TMDb ID</label>
-              <input id="tmdb_id" type="text" maxlength="50" placeholder="12345" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-            </div>
-            <div>
-              <label for="anilist_id" class="mb-1.5 block text-sm font-medium">AniList ID</label>
-              <input id="anilist_id" type="text" maxlength="50" placeholder="154587" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-            </div>
-            <div>
-              <label for="kitsu_id" class="mb-1.5 block text-sm font-medium">Kitsu ID</label>
-              <input id="kitsu_id" type="text" maxlength="50" placeholder="46474" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-            </div>
-            <div class="sm:col-span-2">
-              <label for="custom_id" class="mb-1.5 block text-sm font-medium">ID personalizado</label>
-              <input id="custom_id" type="text" maxlength="100" placeholder="viki-the-glory-s01" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+            <div class="field">
+              <label for="seeders">Seeders</label>
+              <input id="seeders" type="number" min="0" step="1" value="10">
             </div>
           </div>
         </details>
 
-        <div>
-          <button id="submit-button" type="submit" class="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 focus:outline-none focus:ring-4 focus:ring-emerald-200 disabled:cursor-wait disabled:opacity-60">Guardar en Layerbase</button>
-          <p id="form-status" class="mt-3 hidden rounded-lg px-3 py-2.5 text-sm" role="status" aria-live="polite"></p>
+        <div class="form-actions">
+          <button id="submit-button" type="submit" class="button button-submit">Guardar</button>
+          <p class="shortcut-hint">Atajo: <kbd>Ctrl</kbd> + <kbd>Enter</kbd></p>
+          <p id="form-status" class="form-status" role="status" aria-live="polite" hidden></p>
         </div>
       </form>
 
-      <p class="mt-5 text-center text-xs text-slate-500">El panel es estático; la API solo se invoca cuando guardas un registro.</p>
+      <section class="recent" id="recent" hidden aria-labelledby="recent-title">
+        <div class="recent-head">
+          <h2 id="recent-title">Guardados recientes</h2>
+          <button type="button" class="link-button" id="clear-recent">Limpiar</button>
+        </div>
+        <ul id="recent-list"></ul>
+      </section>
+
+      <p class="admin-footnote">El panel es estático; solo se contacta al servidor cuando guardas un registro.</p>
     </main>
   </div>
 </body>

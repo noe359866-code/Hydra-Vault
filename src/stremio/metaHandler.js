@@ -1,4 +1,6 @@
 const db = require('../db');
+const { isEpisodicType, parseStremioId } = require('../utils/episodes');
+const { cleanShowName, posterFor, backgroundFor } = require('../utils/titles');
 
 /**
  * Handles GET /meta/:type/:id.json requests
@@ -19,34 +21,71 @@ async function handleMetaRequest(req, res) {
     let stremioType = item.type;
     if (stremioType === 'drama') stremioType = 'series';
 
-    const genres = [item.source_platform, item.quality, item.audio_lang, item.subtitles].filter(Boolean);
+    const genres = [item.source_platform, item.quality, item.audio_lang].filter(Boolean);
+    const name = cleanShowName(item.title, item.type);
+    const qualities = [...new Set(rows.map(row => row.quality).filter(Boolean))].join(', ');
 
     const meta = {
       id: cleanId,
       type: stremioType,
-      name: item.title,
+      name,
       genres,
-      posterShape: 'regular',
-      background: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1920&auto=format&fit=crop',
-      description: `[Hydra Vault] Contenido curado exclusivo.\nPlataforma: ${item.source_platform}\nCalidad: ${item.quality}\nAudio: ${item.audio_lang}\nSubtítulos: ${item.subtitles || 'Multi'}\nTamaño: ${item.size}\nSeeders: ${item.seeders}`,
+      poster: posterFor(item, name),
+      posterShape: 'poster',
+      background: backgroundFor(item),
+      description: [
+        `Plataforma: ${item.source_platform || 'Torrent'}`,
+        `Calidades: ${qualities || item.quality || '1080p'}`,
+        `Audio: ${item.audio_lang || 'Multi'} • Subtítulos: ${item.subtitles || 'Multi'}`
+      ].join('\n'),
       releaseInfo: new Date(item.created_at || Date.now()).getFullYear().toString()
     };
 
-    // Expose actual episode metadata when the vault stores individual episodes.
-    if (stremioType === 'series') {
-      const episodes = rows
-        .filter(row => Number.isInteger(Number(row.season)) && Number(row.season) >= 0 && Number.isInteger(Number(row.episode)) && Number(row.episode) >= 1)
-        .map(row => ({
-          id: `${cleanId}:${Number(row.season)}:${Number(row.episode)}`,
-          title: row.episode_title || row.title,
-          season: Number(row.season),
-          episode: Number(row.episode),
-          released: row.created_at || new Date().toISOString()
-        }));
-      meta.videos = episodes.length ? episodes : [{
-        id: `${cleanId}:1:1`, title: item.title, season: 1, episode: 1,
-        released: item.created_at || new Date().toISOString()
-      }];
+    // Lista real de temporadas / episodios / capítulos guardados.
+    if (isEpisodicType(item.type) || stremioType === 'series') {
+      const parsedId = parseStremioId(cleanId);
+      // Kitsu/AniList identifican cada temporada por separado: Stremio pide kitsu:ID:CAPÍTULO.
+      const usesAbsoluteEpisodes = ['kitsu', 'anilist', 'mal'].includes(parsedId.prefix);
+      const fallbackDate = item.created_at || new Date().toISOString();
+      const seen = new Set();
+      const videos = [];
+
+      for (const row of rows) {
+        if (row.episode === null || row.episode === undefined) continue;
+        const episode = Number(row.episode);
+        const season = row.season === null || row.season === undefined ? 1 : Number(row.season);
+        if (!Number.isInteger(episode) || episode < 1 || !Number.isInteger(season) || season < 0) continue;
+
+        const videoId = usesAbsoluteEpisodes ? `${cleanId}:${episode}` : `${cleanId}:${season}:${episode}`;
+        if (seen.has(videoId)) continue;
+        seen.add(videoId);
+
+        const isAnime = row.type === 'anime';
+        videos.push({
+          id: videoId,
+          title: row.episode_title || (isAnime ? `Capítulo ${episode}` : `Episodio ${episode}`),
+          season,
+          episode,
+          released: new Date(row.created_at || fallbackDate).toISOString()
+        });
+      }
+
+      videos.sort((a, b) => (a.season - b.season) || (a.episode - b.episode));
+
+      if (!videos.length) {
+        // Solo hay packs completos: un único vídeo que devuelve el pack.
+        const packSeason = rows.find(row => row.season !== null && row.season !== undefined);
+        const season = packSeason ? Number(packSeason.season) : 1;
+        videos.push({
+          id: usesAbsoluteEpisodes ? `${cleanId}:1` : `${cleanId}:${season}:1`,
+          title: item.title,
+          season,
+          episode: 1,
+          released: new Date(fallbackDate).toISOString()
+        });
+      }
+
+      meta.videos = videos;
     }
 
     return res.json({ meta });

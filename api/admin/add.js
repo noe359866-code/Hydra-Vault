@@ -5,6 +5,7 @@
 const crypto = require('crypto');
 const config = require('../../src/config');
 const db = require('../../src/db');
+const { normalizeEpisodeFields } = require('../../src/utils/episodes');
 
 const ALLOWED_TYPES = new Set(['anime', 'series', 'movie', 'drama']);
 
@@ -15,6 +16,26 @@ function matchesSecret(candidate, expected) {
   const candidateBytes = Buffer.from(candidate, 'utf8');
   const expectedBytes = Buffer.from(expected, 'utf8');
   return candidateBytes.length === expectedBytes.length && crypto.timingSafeEqual(candidateBytes, expectedBytes);
+}
+
+// Acepta el ID o la URL completa: imdb.com/title/tt123…, kitsu.app/anime/46474, anilist.co/anime/154587/…, themoviedb.org/tv/1234-nombre
+function normalizeExternalId(value, field) {
+  const text = optionalText(value, field, 300);
+  if (!text) return null;
+  if (field === 'imdb_id') {
+    const match = text.match(/tt\d{5,}/i);
+    if (!match) throw new Error('El campo "imdb_id" debe tener el formato tt1234567.');
+    return match[0].toLowerCase();
+  }
+  if (field === 'custom_id') {
+    if (text.length > 100) throw new Error('El campo "custom_id" supera 100 caracteres.');
+    if (text.includes(':')) throw new Error('El campo "custom_id" no puede contener ":".');
+    return text;
+  }
+  const urlMatch = text.match(/\/(?:anime|manga|tv|movie)\/(\d+)/i);
+  const digits = urlMatch ? urlMatch[1] : text;
+  if (!/^\d{1,20}$/.test(digits)) throw new Error(`El campo "${field}" debe ser numérico (o la URL de la ficha).`);
+  return digits;
 }
 
 function optionalText(value, field, maxLength) {
@@ -63,6 +84,9 @@ module.exports = async (req, res) => {
 
     if (!title) return res.status(400).json({ success: false, error: 'El campo "title" es obligatorio.' });
     if (!magnet) return res.status(400).json({ success: false, error: 'El campo "magnet" es obligatorio.' });
+    if (!/^magnet:\?.*xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i.test(magnet) && !/^https?:\/\/\S+$/i.test(magnet) && !/^[a-f0-9]{40}$/i.test(magnet)) {
+      return res.status(400).json({ success: false, error: 'El enlace debe ser un magnet (urn:btih), un hash de 40 caracteres o una URL http(s).' });
+    }
     if (!type || !ALLOWED_TYPES.has(type.toLowerCase())) {
       return res.status(400).json({ success: false, error: 'type debe ser anime, series, movie o drama.' });
     }
@@ -72,16 +96,24 @@ module.exports = async (req, res) => {
       return res.status(400).json({ success: false, error: 'seeders debe ser un entero mayor o igual a cero.' });
     }
 
+    // Película: sin temporada/episodio. Serie/drama: temporada + episodio. Anime: capítulo (temporada opcional).
+    let episodeFields;
+    try {
+      episodeFields = normalizeEpisodeFields(type.toLowerCase(), body.season, body.episode, { strict: true });
+    } catch (validationError) {
+      return res.status(400).json({ success: false, error: validationError.message });
+    }
+
     const entry = {
-      imdb_id: optionalText(body.imdb_id, 'imdb_id', 50),
-      tmdb_id: optionalText(body.tmdb_id, 'tmdb_id', 50),
-      anilist_id: optionalText(body.anilist_id, 'anilist_id', 50),
-      kitsu_id: optionalText(body.kitsu_id, 'kitsu_id', 50),
-      custom_id: optionalText(body.custom_id, 'custom_id', 100),
+      imdb_id: normalizeExternalId(body.imdb_id, 'imdb_id'),
+      tmdb_id: normalizeExternalId(body.tmdb_id, 'tmdb_id'),
+      anilist_id: normalizeExternalId(body.anilist_id, 'anilist_id'),
+      kitsu_id: normalizeExternalId(body.kitsu_id, 'kitsu_id'),
+      custom_id: normalizeExternalId(body.custom_id, 'custom_id'),
       type: type.toLowerCase(),
-      season: body.season === undefined || body.season === '' ? null : Number(body.season),
-      episode: body.episode === undefined || body.episode === '' ? null : Number(body.episode),
-      episode_title: optionalText(body.episode_title, 'episode_title', 300),
+      season: episodeFields.season,
+      episode: episodeFields.episode,
+      episode_title: episodeFields.episode === null ? null : optionalText(body.episode_title, 'episode_title', 300),
       source_platform: optionalText(body.source_platform, 'source_platform', 50) || 'Torrent',
       title,
       magnet,
@@ -92,10 +124,12 @@ module.exports = async (req, res) => {
       seeders
     };
 
-    if (entry.season !== null && (!Number.isInteger(entry.season) || entry.season < 0)) return res.status(400).json({ success: false, error: 'season debe ser un entero mayor o igual a cero.' });
-    if (entry.episode !== null && (!Number.isInteger(entry.episode) || entry.episode < 1)) return res.status(400).json({ success: false, error: 'episode debe ser un entero mayor o igual a uno.' });
-    if ((entry.season === null) !== (entry.episode === null) && ['anime', 'series', 'drama'].includes(entry.type)) return res.status(400).json({ success: false, error: 'Para series, dramas y anime debes indicar temporada y episodio juntos.' });
-    const insertedRow = await db.createEntry(entry);
+    const duplicate = await db.findDuplicate(entry);
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: 'Este enlace ya está guardado para ese mismo episodio.', data: duplicate });
+    }
+
+    const insertedRow = await db.createEntry(entry, { strictEpisodes: true });
     return res.status(201).json({
       success: true,
       message: 'Contenido insertado correctamente.',

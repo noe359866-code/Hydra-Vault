@@ -18,7 +18,7 @@ const config = {
   // Stremio Addon Configuration
   addon: {
     id: 'community.hydra.torrents',
-    version: '1.0.0',
+    version: '1.1.0',
     name: 'Hydra Torrents',
     description: 'Contenido exclusivo, rarezas, animes y dramas asiáticos (Viki, iQiyi, Europa, América) curados a mano.',
     logo: '/favicon.svg',
