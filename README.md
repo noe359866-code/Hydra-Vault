@@ -30,9 +30,13 @@
   - Cliente oficial `pg` con SSL y pool limitado por defecto a una conexión por instancia serverless (`PG_MAX` permite ajustarlo).
   - La inicialización de esquema es bajo demanda; modo memoria disponible en desarrollo sin conexión.
 - **Panel de Administración (`/admin`):**
-  - Formulario responsivo con campos completos y detalles opcionales plegables.
+  - Pega el magnet y se rellenan solos título, calidad, audio, plataforma, tamaño, temporada y episodio/capítulo.
+  - Tipo con botones (Drama · Anime · Serie · Película), botones −/+ para temporada y episodio, `Ctrl + Enter` para guardar.
+  - IDs de IMDb, Kitsu, TMDb y AniList aceptan la URL completa de la ficha; aviso si falta un ID.
+  - Recuerda tus últimas opciones y muestra los guardados recientes (en el navegador, sin llamadas extra).
+  - Evita duplicados (mismo enlace y mismo episodio → `409`).
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
-  - Sin sondeos ni llamadas de prueba automáticas: solo se invoca el API al guardar.
+  - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar.
 - **Compatibilidad Dual Vercel Serverless / Express:**
   - Despliegue en 1 clic en Vercel vía `api/index.js` y `vercel.json`.
   - O ejecución como servidor independiente Node.js (`npm start`) para Docker o VPS.
@@ -45,7 +49,7 @@
 - **Framework Web:** Express.js 4
 - **Base de Datos:** PostgreSQL con cliente oficial `pg` (`Pool` con reconexión y `rejectUnauthorized: false` para Layerbase/Neon/Supabase)
 - **CORS:** Habilitado para todos los orígenes (`*`) según especificación de addons de Stremio.
-- **Frontend Admin & Landing:** páginas estáticas sin build; la portada usa recursos locales y `/admin` usa Tailwind Play CDN.
+- **Frontend Admin & Landing:** páginas estáticas sin build ni CDN; ambas comparten `public/styles.css`.
 
 ---
 
@@ -96,6 +100,9 @@ ADMIN_SECRET=mi_super_secreto_seguro_2026
 
 # Puerto para modo Express independiente (por defecto: 7000)
 PORT=7000
+
+# Solo pruebas: insertar datos demo si la tabla está vacía (nunca en producción)
+SEED_DEMO_DATA=false
 
 # Entorno de Node ('production' o 'development')
 NODE_ENV=production
@@ -169,17 +176,17 @@ El servidor escuchará en `http://localhost:7000`:
 
 El panel está pensado para mantener bajo el consumo de la versión gratuita:
 
-1. Ingresa `ADMIN_SECRET` y completa título, tipo y enlace.
+1. Ingresa `ADMIN_SECRET` una vez (queda guardada) y pega el enlace magnet: título, calidad, audio, tamaño y episodio se rellenan solos.
 2. Según el **Tipo**, el formulario cambia solo:
    - **Película:** se ocultan temporada y episodio.
    - **Serie / Drama:** *Temporada* y *Episodio* obligatorios (se muestra como `T1 · E03`).
    - **Anime:** *Capítulo* obligatorio y *Temporada* opcional (se muestra como `Cap. 12`). Déjala vacía para numeración absoluta o IDs de Kitsu/AniList.
    - Si el título contiene `S01E03`, `1x03`, `Temporada 2`, `Capítulo 12`, `Episodio 5` o `Nombre - 12 (1080p)`, los números se rellenan automáticamente.
-3. Abre **Detalles técnicos** solo si necesitas cargar calidad, idioma o identificadores.
-4. Pulsa **Guardar**. Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
+3. Pega el ID o la URL de IMDb y/o Kitsu en **¿Dónde aparece en Stremio?**. Sin IMDb/Kitsu usa un **ID personalizado** (en *Más opciones*) para agrupar los episodios del mismo título.
+4. Pulsa **Guardar** (o `Ctrl + Enter`). Tras guardar, el formulario conserva tipo, temporada e IDs y avanza al siguiente episodio/capítulo para cargar una temporada seguida.
 5. El navegador hace un único `POST /api/admin/add`; no consulta métricas ni realiza pruebas automáticas.
 
-`/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. Tailwind se carga desde su CDN (petición externa al navegador; no es una función de Vercel). El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
+`/admin` se entrega como archivo estático y no ejecuta una función de Vercel al abrirse. El token queda guardado en `localStorage` y se envía únicamente en la cabecera `x-admin-secret` al guardar. No uses la opción de recordar clave en un equipo compartido; `localStorage` es accesible para scripts ejecutados en el mismo origen.
 
 ---
 
@@ -260,6 +267,7 @@ Hydra-Vault/
 │   └── utils/
 │       ├── episodes.js          # Reglas de temporada/episodio/capítulo y parser de IDs de Stremio
 │       ├── magnet.js            # Parser de magnets (BTIH Hex/Base32, trackers)
+│       ├── titles.js            # Nombre limpio de la serie y pósters (Metahub / SVG)
 │       └── seedData.js          # Catálogo curado inicial de ejemplo
 └── test/
     └── test.js                  # Batería completa de pruebas unitarias y de integración
@@ -281,6 +289,9 @@ Valida:
 - Validez del protocolo Stremio v3 (`manifest.json`, stream resolution, catalog metas).
 - Seguridad del guardado (`401` y `201`) y reglas de temporada/episodio/capítulo por tipo.
 - Que cada episodio de serie y cada capítulo de anime (IMDb y Kitsu) devuelva solo su propio stream.
+- Catálogo agrupado (un elemento por título, nombre limpio, póster real), IDs desde URL y duplicados (`409`).
+
+Para probar contra PostgreSQL real: `LAYERBASE_DATABASE_URL=postgres://… SEED_DEMO_DATA=true npm test` (usa una base vacía de pruebas).
 - Estricta correspondencia con las columnas de `hydra_vault`.
 - Renderizado de vistas HTML (`/` y `/admin`).
 

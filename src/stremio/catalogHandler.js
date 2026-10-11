@@ -1,94 +1,44 @@
 const db = require('../db');
+const { cleanShowName, posterFor } = require('../utils/titles');
 
-/**
- * Generates an elegant SVG poster data URI if no external poster URL is available
- */
-function createFallbackPoster(title, platform, quality) {
-  const cleanTitle = (title || 'Hydra Content').substring(0, 30);
-  const color = platform === 'Viki' ? '#8b5cf6' : (platform === 'iQiyi' ? '#10b981' : '#3b82f6');
-  
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#0f172a" />
-        <stop offset="100%" stop-color="#1e293b" />
-      </linearGradient>
-    </defs>
-    <rect width="300" height="450" rx="12" fill="url(#bg)"/>
-    <circle cx="150" cy="140" r="50" fill="${color}" fill-opacity="0.2"/>
-    <text x="150" y="148" font-family="system-ui, sans-serif" font-weight="bold" font-size="28" fill="${color}" text-anchor="middle">HYDRA</text>
-    <rect x="20" y="240" width="260" height="1" fill="#334155" />
-    <text x="150" y="280" font-family="system-ui, sans-serif" font-weight="bold" font-size="16" fill="#f8fafc" text-anchor="middle">${escapeXml(cleanTitle)}</text>
-    <rect x="100" y="320" width="100" height="28" rx="6" fill="${color}" />
-    <text x="150" y="339" font-family="system-ui, sans-serif" font-weight="bold" font-size="12" fill="#ffffff" text-anchor="middle">${escapeXml(platform || 'Vault')} • ${escapeXml(quality || '1080p')}</text>
-  </svg>`;
-  
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
+function parseExtra(req) {
+  let genre = req.query.genre || null;
+  let search = req.query.search || null;
+  let skip = req.query.skip ? parseInt(req.query.skip, 10) || 0 : 0;
 
-function escapeXml(unsafe) {
-  return String(unsafe).replace(/[<>&'"]/g, c => {
-    switch (c) {
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '&': return '&amp;';
-      case '\'': return '&apos;';
-      case '"': return '&quot;';
-    }
-  });
+  if (req.params.extra) {
+    const params = new URLSearchParams(req.params.extra.replace(/\.json$/, ''));
+    if (params.get('genre')) genre = params.get('genre');
+    if (params.get('search')) search = params.get('search');
+    if (params.get('skip')) skip = parseInt(params.get('skip'), 10) || 0;
+  }
+  return { genre, search, skip };
 }
 
 /**
- * Handles GET /catalog/:type/:id.json and GET /catalog/:type/:id/:extra.json
+ * GET /catalog/:type/:id.json y GET /catalog/:type/:id/:extra.json
+ * Un elemento por título (todas sus temporadas/episodios agrupados).
  */
 async function handleCatalogRequest(req, res) {
   res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=300');
   const { type, id } = req.params;
-  const cleanCatalogId = id.replace(/\.json$/, '');
-
-  let genre = req.query.genre || null;
-  let search = req.query.search || null;
-  let skip = req.query.skip ? parseInt(req.query.skip, 10) : 0;
-
-  if (req.params.extra) {
-    const extraStr = req.params.extra.replace(/\.json$/, '');
-    const searchParams = new URLSearchParams(extraStr);
-    if (searchParams.get('genre')) genre = searchParams.get('genre');
-    if (searchParams.get('search')) search = searchParams.get('search');
-    if (searchParams.get('skip')) skip = parseInt(searchParams.get('skip'), 10) || 0;
-  }
+  const catalogId = id.replace(/\.json$/, '');
+  const { genre, search, skip } = parseExtra(req);
 
   try {
-    const rows = await db.getCatalogItems({
-      catalogId: cleanCatalogId,
-      type,
-      genre,
-      search,
-      skip,
-      limit: 50
-    });
+    const rows = await db.getCatalogItems({ catalogId, type, genre, search, skip, limit: 50 });
 
     const metas = rows.map(item => {
-      // Prefer IMDb ID for Cinemeta metadata resolution in Stremio
-      const metaId = item.imdb_id || (item.kitsu_id ? `kitsu:${item.kitsu_id}` : null) || item.custom_id || `hydra:${item.id}`;
-      
-      let stremioType = item.type;
-      if (stremioType === 'drama') stremioType = 'series';
-
-      const genres = [];
-      if (item.source_platform) genres.push(item.source_platform);
-      if (item.audio_lang) genres.push(item.audio_lang);
-      if (item.subtitles) genres.push(`Subs: ${item.subtitles}`);
-      if (item.quality) genres.push(item.quality);
-
+      const name = cleanShowName(item.title, item.type);
+      const genres = [item.source_platform, item.audio_lang, item.subtitles && `Subs: ${item.subtitles}`, item.quality].filter(Boolean);
       return {
-        id: metaId,
-        type: stremioType,
-        name: item.title,
+        id: item.group_key || db.groupKey(item),
+        type: item.type === 'drama' ? 'series' : item.type,
+        name,
         genres,
-        poster: createFallbackPoster(item.title, item.source_platform, item.quality),
-        posterShape: 'regular',
-        description: `Hydra Curated Vault • ${item.source_platform} • Calidad: ${item.quality} • Audio: ${item.audio_lang} • Subs: ${item.subtitles || 'Multi'} • Seeds: ${item.seeders}`
+        poster: posterFor(item, name),
+        posterShape: 'poster',
+        description: `${item.source_platform || 'Hydra'} • ${item.quality || '1080p'} • Audio: ${item.audio_lang || 'Multi'} • Subs: ${item.subtitles || 'Multi'}`
       };
     });
 

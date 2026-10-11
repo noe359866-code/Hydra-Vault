@@ -1,5 +1,6 @@
 const db = require('../db');
 const { isEpisodicType, parseStremioId } = require('../utils/episodes');
+const { cleanShowName, posterFor, backgroundFor } = require('../utils/titles');
 
 /**
  * Handles GET /meta/:type/:id.json requests
@@ -20,16 +21,23 @@ async function handleMetaRequest(req, res) {
     let stremioType = item.type;
     if (stremioType === 'drama') stremioType = 'series';
 
-    const genres = [item.source_platform, item.quality, item.audio_lang, item.subtitles].filter(Boolean);
+    const genres = [item.source_platform, item.quality, item.audio_lang].filter(Boolean);
+    const name = cleanShowName(item.title, item.type);
+    const qualities = [...new Set(rows.map(row => row.quality).filter(Boolean))].join(', ');
 
     const meta = {
       id: cleanId,
       type: stremioType,
-      name: item.title,
+      name,
       genres,
-      posterShape: 'regular',
-      background: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1920&auto=format&fit=crop',
-      description: `[Hydra Vault] Contenido curado exclusivo.\nPlataforma: ${item.source_platform}\nCalidad: ${item.quality}\nAudio: ${item.audio_lang}\nSubtítulos: ${item.subtitles || 'Multi'}\nTamaño: ${item.size}\nSeeders: ${item.seeders}`,
+      poster: posterFor(item, name),
+      posterShape: 'poster',
+      background: backgroundFor(item),
+      description: [
+        `Plataforma: ${item.source_platform || 'Torrent'}`,
+        `Calidades: ${qualities || item.quality || '1080p'}`,
+        `Audio: ${item.audio_lang || 'Multi'} • Subtítulos: ${item.subtitles || 'Multi'}`
+      ].join('\n'),
       releaseInfo: new Date(item.created_at || Date.now()).getFullYear().toString()
     };
 

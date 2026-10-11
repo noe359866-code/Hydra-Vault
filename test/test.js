@@ -256,6 +256,46 @@ async function runTests() {
       assert.strictEqual(res.body.streams.length, 2);
     });
 
+    await test('Admin API: accepts pasted URLs as IDs and rejects invalid links', async () => {
+      const ok = await addEntry({ title: 'URL ids S01E01', type: 'series', season: 1, episode: 1,
+        imdb_id: 'https://www.imdb.com/title/tt0903747/?ref_=nv', tmdb_id: 'https://www.themoviedb.org/tv/1396-breaking-bad',
+        magnet: MAGNET(9) });
+      assert.strictEqual(ok.statusCode, 201);
+      assert.strictEqual(ok.body.data.imdb_id, 'tt0903747');
+      assert.strictEqual(ok.body.data.tmdb_id, '1396');
+      const bad = await addEntry({ title: 'Bad link', type: 'movie', magnet: 'hola' });
+      assert.strictEqual(bad.statusCode, 400);
+    });
+
+    await test('Admin API: duplicate link for the same episode returns 409', async () => {
+      const again = await addEntry({ title: 'URL ids S01E01', type: 'series', season: 1, episode: 1, imdb_id: 'tt0903747', magnet: MAGNET(9) });
+      assert.strictEqual(again.statusCode, 409);
+      const otherEpisode = await addEntry({ title: 'URL ids S01E02', type: 'series', season: 1, episode: 2, imdb_id: 'tt0903747', magnet: MAGNET(9) });
+      assert.strictEqual(otherEpisode.statusCode, 201);
+    });
+
+    await test('Stremio catalog: one item per show with a clean name and real poster', async () => {
+      const res = await request('/catalog/series/hydra_series.json');
+      const items = res.body.metas.filter(m => m.id === 'tt6660001');
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].name, 'Mix Show');
+      assert(items[0].poster.includes('metahub.space/poster'));
+      const anime = await request('/catalog/anime/hydra_anime.json');
+      assert(anime.body.metas.some(m => m.id === 'tt5550001'));
+    });
+
+    await test('Stremio: custom_id groups episodes under hydra:<custom_id>', async () => {
+      await addEntry({ title: 'Raro S01E01', type: 'drama', custom_id: 'raro-drama', season: 1, episode: 1, magnet: MAGNET('a') });
+      await addEntry({ title: 'Raro S01E02', type: 'drama', custom_id: 'raro-drama', season: 1, episode: 2, magnet: MAGNET('b') });
+      const catalog = await request('/catalog/series/hydra_dramas.json');
+      assert.strictEqual(catalog.body.metas.filter(m => m.id === 'hydra:raro-drama').length, 1);
+      const meta = await request('/meta/series/hydra:raro-drama.json');
+      assert.deepStrictEqual(meta.body.meta.videos.map(v => v.id), ['hydra:raro-drama:1:1', 'hydra:raro-drama:1:2']);
+      const stream = await request('/stream/series/hydra:raro-drama:1:2.json');
+      assert.strictEqual(stream.body.streams.length, 1);
+      assert(stream.body.streams[0].title.includes('Raro S01E02'));
+    });
+
     // 3. Static web pages: no frontend framework or third-party assets.
     await test('Landing page is served locally without external fonts or scripts', async () => {
       const res = await request('/');
@@ -267,12 +307,14 @@ async function runTests() {
       assert(!res.raw.includes('tailwindcss.com'));
     });
 
-    await test('Admin page uses Tailwind CDN and includes the complete form', async () => {
+    await test('Admin page is fully local (no Tailwind CDN) and includes the complete form', async () => {
       const res = await request('/admin');
       assert.strictEqual(res.statusCode, 200);
       assert(res.headers['content-type'].includes('text/html'));
       assert(res.raw.includes('Hydra Vault'));
-      assert(res.raw.includes('cdn.tailwindcss.com'));
+      assert(!res.raw.includes('cdn.tailwindcss.com'));
+      assert(res.raw.includes('/styles.css'));
+      assert(res.raw.includes('name="type" value="anime"'));
       assert(res.raw.includes('Clave de administrador'));
       assert(res.raw.includes('localStorage'));
       assert(res.raw.includes('Subtítulos'));
