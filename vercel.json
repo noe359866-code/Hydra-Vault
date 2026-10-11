@@ -7,7 +7,6 @@
     { "source": "/styles.css", "destination": "/public/styles.css" },
     { "source": "/admin.js", "destination": "/public/admin.js" },
     { "source": "/favicon.svg", "destination": "/public/favicon.svg" },
-    { "source": "/api/vault", "destination": "/api/vault.js" },
     { "source": "/api/admin/add", "destination": "/api/admin/add.js" },
     { "source": "/(.*)", "destination": "/api/index.js" }
   ]

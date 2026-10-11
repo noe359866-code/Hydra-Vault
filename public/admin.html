@@ -43,18 +43,7 @@
       <form id="add-form" class="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div>
           <label for="title" class="mb-1.5 block text-sm font-semibold">Título *</label>
-          <input id="title" type="text" maxlength="1000" required placeholder="Ej.: The Glory S01 1080p Viki Dual Latino" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
-        </div>
-
-        <div id="episode-fields" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div><label for="season" class="mb-1.5 block text-sm font-semibold">Temporada</label><input id="season" type="number" min="0" step="1" placeholder="1" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <div><label for="episode" class="mb-1.5 block text-sm font-semibold">Episodio / capítulo</label><input id="episode" type="number" min="1" step="1" placeholder="3" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <div><label for="episode_title" class="mb-1.5 block text-sm font-semibold">Título del episodio</label><input id="episode_title" type="text" maxlength="300" placeholder="Ej. La llegada" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></div>
-          <p class="sm:col-span-3 text-xs text-slate-500">Para películas, deja estos campos vacíos. Para series, dramas y anime, indica temporada y episodio juntos.</p>
-        </div>
-        <div>
-          <label for="magnet" class="mb-1.5 block text-sm font-semibold">Enlace magnet o URL *</label>
-          <textarea id="magnet" rows="3" required placeholder="magnet:?xt=urn:btih:… o https://…" class="w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"></textarea>
+          <input id="title" type="text" maxlength="1000" required placeholder="Ej.: The Glory S01E03 1080p Viki Dual Latino" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -78,6 +67,31 @@
               <option value="América">América</option>
             </select>
           </div>
+        </div>
+
+        <fieldset id="episode-fields" class="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+          <legend id="episode-legend" class="px-1 text-sm font-semibold text-emerald-900">Temporada y episodio</legend>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div id="season-wrap">
+              <label id="season-label" for="season" class="mb-1.5 block text-sm font-semibold">Temporada *</label>
+              <input id="season" type="number" min="0" step="1" inputmode="numeric" placeholder="1" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+            </div>
+            <div>
+              <label id="episode-label" for="episode" class="mb-1.5 block text-sm font-semibold">Episodio *</label>
+              <input id="episode" type="number" min="1" step="1" inputmode="numeric" placeholder="3" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+            </div>
+            <div>
+              <label id="episode-title-label" for="episode_title" class="mb-1.5 block text-sm font-semibold">Título del episodio</label>
+              <input id="episode_title" type="text" maxlength="300" placeholder="Opcional" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100">
+            </div>
+          </div>
+          <p id="episode-help" class="mt-3 text-xs leading-5 text-slate-600"></p>
+          <p id="episode-preview" class="mt-1 hidden text-xs font-semibold text-emerald-800" aria-live="polite"></p>
+        </fieldset>
+
+        <div>
+          <label for="magnet" class="mb-1.5 block text-sm font-semibold">Enlace magnet o URL *</label>
+          <textarea id="magnet" rows="3" required placeholder="magnet:?xt=urn:btih:… o https://…" class="w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"></textarea>
         </div>
 
         <details class="rounded-lg border border-slate-200 px-4 py-3">
@@ -149,7 +163,7 @@
         </div>
       </form>
 
-      <p class="mt-5 text-center text-xs text-slate-500">El panel es estático; la API solo se invoca cuando guardas un registro.</p>
+      <p class="mt-5 text-center text-xs text-slate-500">El panel es estático; solo se contacta al servidor cuando guardas un registro.</p>
     </main>
   </div>
 </body>

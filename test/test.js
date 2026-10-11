@@ -67,37 +67,12 @@ async function runTests() {
   });
 
   try {
-    // 1. Cloudflare Worker Endpoint: GET /api/vault?id=...
-    await test('Cloudflare Worker: GET /api/vault?id=tt21344706 returns formatted streams JSON', async () => {
-      const res = await request('/api/vault?id=tt21344706');
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.success, true);
-      assert(Array.isArray(res.body.streams));
-      assert(res.body.streams.length > 0);
-
-      const stream = res.body.streams[0];
-      assert(stream.title.includes('[Hydra Vault ⚡]'));
-      assert(stream.title.includes('[Viki]'));
-      assert(stream.url.startsWith('magnet:?xt=urn:btih:'));
-      assert.strictEqual(stream.details.quality, '1080p');
-      assert.strictEqual(stream.details.source, 'Viki');
-      assert.strictEqual(stream.details.subtitles, 'Español');
-      assert(stream.title.includes('Subs: Español'));
-      assert.strictEqual(res.headers['access-control-allow-origin'], '*');
-    });
-
-    await test('Cloudflare Worker: GET /api/vault without id returns 400 error', async () => {
-      const res = await request('/api/vault');
-      assert.strictEqual(res.statusCode, 400);
-      assert.strictEqual(res.body.success, false);
-      assert(res.body.error);
-    });
-
-    await test('Cloudflare Worker: GET /api/vault for nonexistent id returns success: true with empty streams array', async () => {
-      const res = await request('/api/vault?id=nonexistent_999999');
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.success, true);
-      assert.deepStrictEqual(res.body.streams, []);
+    // 1. REST API eliminada: solo queda POST /api/admin/add
+    await test('REST API removed: GET /api/vault and /api/health no longer exist', async () => {
+      for (const path of ['/api/vault?id=tt21344706', '/api/health', '/api/stats']) {
+        const res = await request(path, { headers: { Accept: 'application/json' } });
+        assert.strictEqual(res.statusCode, 404, path);
+      }
     });
 
     // 2. Private Admin Endpoint: POST /api/admin/add
@@ -179,20 +154,6 @@ async function runTests() {
       assert.strictEqual(res.body.data.episode_title, 'Prueba episodio tres');
     });
 
-    await test('CRUD route: POST /api/vault is not intercepted by public GET handler', async () => {
-      const res = await request('/api/vault', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: { title: 'Unauthorized test', type: 'movie', magnet: 'magnet:?xt=urn:btih:0000000000000000000000000000000000000000' } });
-      assert.strictEqual(res.statusCode, 401);
-    });
-
-    await test('Cloudflare Worker: Queries newly inserted item via GET /api/vault?id=tt7777777', async () => {
-      const res = await request('/api/vault?id=tt7777777');
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.body.success, true);
-      assert.strictEqual(res.body.streams.length, 1);
-      assert(res.body.streams[0].title.includes('Twinkling Watermelon'));
-      assert(res.body.streams[0].title.includes('[Viki]'));
-    });
-
     await test('Stremio: stored season and episode resolve to the correct stream', async () => {
       const res = await request('/stream/series/tt7777777:1:3.json');
       assert.strictEqual(res.statusCode, 200);
@@ -205,6 +166,94 @@ async function runTests() {
       assert.strictEqual(res.statusCode, 200);
       assert(Array.isArray(res.body.meta.videos));
       assert(res.body.meta.videos.some(video => video.season === 1 && video.episode === 3));
+    });
+
+    async function addEntry(body) {
+      return request('/api/admin/add', { method: 'POST', headers: {
+          'Content-Type': 'application/json',
+          'x-admin-secret': config.adminSecret
+        }, body });
+    }
+    const MAGNET = (n) => `magnet:?xt=urn:btih:${String(n).repeat(40).slice(0, 40)}`;
+
+    await test('Admin API: series/drama require season and episode', async () => {
+      const noSeason = await addEntry({ title: 'Serie sin temporada', type: 'series', episode: 2, magnet: MAGNET(1) });
+      assert.strictEqual(noSeason.statusCode, 400);
+      const nothing = await addEntry({ title: 'Drama sin episodio', type: 'drama', magnet: MAGNET(1) });
+      assert.strictEqual(nothing.statusCode, 400);
+    });
+
+    await test('Admin API: anime requires chapter, season optional', async () => {
+      const noChapter = await addEntry({ title: 'Anime sin capítulo', type: 'anime', magnet: MAGNET(2) });
+      assert.strictEqual(noChapter.statusCode, 400);
+      assert(noChapter.body.error.includes('capítulo'));
+      const ok = await addEntry({ title: 'Anime Cap 12', type: 'anime', kitsu_id: '111222', imdb_id: 'tt5550001', episode: 12, magnet: MAGNET(3) });
+      assert.strictEqual(ok.statusCode, 201);
+      assert.strictEqual(ok.body.data.season, null);
+      assert.strictEqual(ok.body.data.episode, 12);
+    });
+
+    await test('Admin API: movies drop season/episode', async () => {
+      const res = await addEntry({ title: 'Película', type: 'movie', season: 1, episode: 4, episode_title: 'x', magnet: MAGNET(4) });
+      assert.strictEqual(res.statusCode, 201);
+      assert.strictEqual(res.body.data.season, null);
+      assert.strictEqual(res.body.data.episode, null);
+      assert.strictEqual(res.body.data.episode_title, null);
+    });
+
+    await test('Stremio: each episode only returns its own stream (no mixing)', async () => {
+      await addEntry({ title: 'Mix Show S01E01', type: 'series', imdb_id: 'tt6660001', season: 1, episode: 1, magnet: MAGNET(5) });
+      await addEntry({ title: 'Mix Show S01E02', type: 'series', imdb_id: 'tt6660001', season: 1, episode: 2, magnet: MAGNET(6) });
+      await addEntry({ title: 'Mix Show S02E01', type: 'series', imdb_id: 'tt6660001', season: 2, episode: 1, magnet: MAGNET(7) });
+
+      const e2 = await request('/stream/series/tt6660001:1:2.json');
+      assert.strictEqual(e2.body.streams.length, 1);
+      assert(e2.body.streams[0].title.includes('Mix Show S01E02'));
+      assert(e2.body.streams[0].title.includes('T1 · E02'));
+
+      const s2 = await request('/stream/series/tt6660001:2:1.json');
+      assert.strictEqual(s2.body.streams.length, 1);
+      assert(s2.body.streams[0].title.includes('S02E01'));
+
+      const missing = await request('/stream/series/tt6660001:1:9.json');
+      assert.deepStrictEqual(missing.body.streams, []);
+    });
+
+    await test('Stremio: full-season packs appear after exact episodes', async () => {
+      const res = await request('/stream/series/tt21344706:1:5.json');
+      assert(res.body.streams.length > 0);
+      assert(res.body.streams[0].title.includes('The Glory'));
+    });
+
+    await test('Stremio: anime chapters resolve via Kitsu (kitsu:ID:CAP) and IMDb (tt:1:CAP)', async () => {
+      const kitsu = await request('/stream/anime/kitsu:111222:12.json');
+      assert.strictEqual(kitsu.body.streams.length, 1);
+      assert(kitsu.body.streams[0].title.includes('Cap. 12'));
+      const imdb = await request('/stream/series/tt5550001:1:12.json');
+      assert.strictEqual(imdb.body.streams.length, 1);
+      const wrong = await request('/stream/anime/kitsu:111222:11.json');
+      assert.deepStrictEqual(wrong.body.streams, []);
+    });
+
+    await test('Stremio: anime meta with Kitsu id lists chapters as kitsu:ID:CAP', async () => {
+      const res = await request('/meta/anime/kitsu:111222.json');
+      assert(Array.isArray(res.body.meta.videos));
+      const video = res.body.meta.videos.find(v => v.episode === 12);
+      assert(video);
+      assert.strictEqual(video.id, 'kitsu:111222:12');
+      assert.strictEqual(video.title, 'Capítulo 12');
+    });
+
+    await test('Stremio: series meta lists every season/episode in order without duplicates', async () => {
+      await addEntry({ title: 'Mix Show S01E01 720p', type: 'series', imdb_id: 'tt6660001', season: 1, episode: 1, quality: '720p', magnet: MAGNET(8) });
+      const res = await request('/meta/series/tt6660001.json');
+      const ids = res.body.meta.videos.map(v => v.id);
+      assert.deepStrictEqual(ids, ['tt6660001:1:1', 'tt6660001:1:2', 'tt6660001:2:1']);
+    });
+
+    await test('Stremio: two qualities of the same episode both appear', async () => {
+      const res = await request('/stream/series/tt6660001:1:1.json');
+      assert.strictEqual(res.body.streams.length, 2);
     });
 
     // 3. Static web pages: no frontend framework or third-party assets.

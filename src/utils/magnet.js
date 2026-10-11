@@ -3,6 +3,8 @@
  * Supports BTIH (40-char hex & 32-char Base32), trackers, direct HTTP/HTTPS URLs.
  */
 
+const { formatEpisodeLabel } = require('./episodes');
+
 const DEFAULT_TRACKERS = [
   'udp://tracker.opentrackr.org:1337/announce',
   'udp://open.demonii.com:1337/announce',
@@ -155,6 +157,14 @@ function formatStremioStream(entry) {
   // Stream Title shown in Stremio stream selection list
   const titleLines = [];
   titleLines.push(entry.title || parsed.dn || 'Hydra Release');
+
+  // "T1 · E03 — Título", "Cap. 12 — Título" o "Temporada 1 completa"
+  const episodeLabel = formatEpisodeLabel(entry);
+  if (episodeLabel) {
+    titleLines.push(entry.episode_title && entry.episode !== null && entry.episode !== undefined
+      ? `📺 ${episodeLabel} — ${entry.episode_title}`
+      : `📺 ${episodeLabel}`);
+  }
   
   const techDetails = [];
   if (seeders !== null && seeders !== undefined) techDetails.push(`⚡ ${seeders} seeds`);
