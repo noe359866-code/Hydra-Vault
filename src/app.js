@@ -5,6 +5,9 @@ const stremioRoutes = require('./routes/stremio');
 const adminAddHandler = require('../api/admin/add');
 const adminListHandler = require('../api/admin/list');
 const adminDeleteHandler = require('../api/admin/delete');
+const scraperSearchHandler = require('../api/scrapers/search');
+const scraperStatusHandler = require('../api/scrapers/status');
+const adminImportHandler = require('../api/admin/import');
 
 const app = express();
 
@@ -22,9 +25,14 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '../public'), { maxAge: '1h' }));
 
 // Endpoints privados del panel /admin (igual que las funciones serverless de Vercel).
-app.all('/api/admin/add', adminAddHandler);       // Guardar contenido
-app.all('/api/admin/list', adminListHandler);     // Buscar/listar registros
-app.all('/api/admin/delete', adminDeleteHandler); // Eliminar registros seleccionados
+app.all('/api/admin/add', adminAddHandler);         // Guardar contenido
+app.all('/api/admin/list', adminListHandler);       // Buscar/listar registros
+app.all('/api/admin/delete', adminDeleteHandler);   // Eliminar registros seleccionados
+app.all('/api/admin/import', adminImportHandler);   // Importar desde las webs torrent
+
+// Buscador de webs torrent (lectura pública: consulta los sitios y devuelve resultados en español).
+app.all('/api/scrapers/search', scraperSearchHandler);
+app.all('/api/scrapers/status', scraperStatusHandler);
 
 // Lightweight static pages (also rewritten directly to static files on Vercel).
 app.get('/admin', (req, res) => {

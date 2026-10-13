@@ -13,6 +13,7 @@
 - [Ejecución Local / Servidor VPS](#-ejecución-local--servidor-vps)
 - [Instalación en Stremio](#-instalación-en-stremio)
 - [Panel de Administración Web](#-panel-de-administración-web)
+- [🌐 Buscador de Webs Torrent (Scrapers en español)](#-buscador-de-webs-torrent-scrapers-en-español)
 - [Endpoints](#-endpoints)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Pruebas Automatizadas](#-pruebas-automatizadas)
@@ -38,6 +39,12 @@
   - Evita duplicados exactos (mismo enlace, episodio, calidad, audio y subtítulos → `409`), pero permite **versiones**: el mismo episodio/película se puede repetir cambiando el audio, los subtítulos o la calidad (p. ej. *Latino* y *Dual Audio*).
   - Protegido por `ADMIN_SECRET`; el navegador conserva el token en `localStorage` y lo envía en `x-admin-secret` al guardar.
   - 100 % estático y local (sin Tailwind CDN): carga instantánea y solo contacta al servidor al guardar o gestionar datos.
+- **🌐 Buscador de Webs Torrent (scrapers en español):**
+  - Cada búsqueda consulta EN PARALELO seis webs torrent: **DonTorrent, MejorTorrent, Pelispanda, EliteTorrent, SinSitio y LimeTorrent**.
+  - **Solo acepta contenido de habla hispana**: latino, castellano, dual con español y subtitulado (VOSE opcional); el resto se descarta automáticamente.
+  - Convierte los `.torrent` de las webs en **magnets** (hash BTIH calculado localmente, sin dependencias) y resuelve las descargas protegidas de DonTorrent/MejorTorrent con su prueba de trabajo (PoW SHA-256).
+  - Nuevos catálogos en Stremio (*Torrents Español · Películas / Series / Anime*) con búsqueda en vivo, y refuerzo de `/stream` cuando la bóveda no cubre un episodio.
+  - Dominios configurables por variable de entorno (estas webs rotan de dominio a menudo).
 - **Compatibilidad Dual Vercel Serverless / Express:**
   - Despliegue en 1 clic en Vercel vía `api/index.js` y `vercel.json`.
   - O ejecución como servidor independiente Node.js (`npm start`) para Docker o VPS.
@@ -195,6 +202,39 @@ El panel está pensado para mantener bajo el consumo de la versión gratuita:
 
 ---
 
+## 🌐 Buscador de Webs Torrent (Scrapers en español)
+
+El add-on incluye un módulo de scrapers que busca cada solicitud en seis webs torrent y **solo acepta contenido de habla hispana** (latino, español castellano, dual con español o subtitulado al español):
+
+| Sitio | Método de búsqueda | Magnet |
+|---|---|---|
+| DonTorrent (`dontorrent.meme`) | `POST /buscar` (campo `valor`) | Descarga protegida con PoW → `.torrent` → hash |
+| MejorTorrent (`www47.mejortorrent.eu`) | `POST /buscar` (campo `valor`) | Descarga protegida con PoW → `.torrent` → hash |
+| Pelispanda (`pelispanda.org`) | API JSON `wp-json/wpreact/v1/search` | Magnets directos en la API |
+| EliteTorrent (`www.elitetorrent.com`) | `/?s=` (WordPress) | Enlace `acortame-esto` (base64 + ROT13) → `.torrent` → hash |
+| SinSitio (`www.sinsitio.site`) | Buscador DLE `do=search` | `ddlUrl.php` (base64) → `.torrent` → hash |
+| LimeTorrent (`limetorrent.net`) | `/?q=` / `/search/all/…` | Hash en claro en la ficha → magnet local |
+
+- **Filtro de idioma obligatorio:** títulos con *Castellano, Latino, Español, Spanish, Dual, VOSE/Sub Español* pasan; el audio extranjero sin español (V.O., MULTI, TrueFrench, japones…) se descarta. Con `SCRAPER_ALLOW_VOSE=false` tampoco se aceptan los subtitulados.
+- **Dominios rotativos:** cada web puede sobrescribirse con `SCRAPER_<SITIO>_URL` (ver `.env.example`) cuando cambien de dominio; con `SCRAPER_SITES` se apagan sitios.
+- **Búsqueda en vivo en Stremio:** los catálogos *Torrents Español* usan los scrapers al buscar; al abrir un resultado, `/stream` y `/meta` resuelven la ficha del sitio y devuelven los magnets en español.
+- **Refuerzo de streams:** si la bóveda no tiene un episodio, `/stream` busca el título (guardado en la base) en las webs, filtra por temporada/episodio (acepta packs `Cap. 1-15` o temporadas completas) y añade los mejores streams con caché TTL.
+- **Todo con caché y timeout** (`SCRAPER_CACHE_TTL_SECONDS`, `SCRAPER_TIMEOUT_MS`) para no machacar las webs; el estado de salud de cada sitio se expone en `/api/scrapers/status`.
+
+### Usar el buscador desde el panel (`/admin`)
+
+1. Abre `/admin` y baja hasta **🌐 Buscador de webs torrent**.
+2. Escribe el título, marca los sitios y pulsa **Buscar**: verás los resultados agrupados con calidad, audio, tamaño y semillas, y la salud de cada web.
+3. **⬇️ Importar** resuelve los magnets de la ficha y guarda TODAS las versiones (calidades/audios distintos) en la bóveda; **Rellenar formulario** trae el magnet al formulario principal para añadir el IMDb antes de guardar.
+
+### Endpoints de los scrapers
+
+- `GET /api/scrapers/search?q=<término>&type=movie|series|anime&sites=dontorrent,mejortorrent&resolve=1`: búsqueda unificada (solo habla hispana). Con `resolve=1` hidrata los primeros magnets.
+- `GET /api/scrapers/status`: estado de salud (latencia y último error) de cada sitio.
+- `POST /api/admin/import` (cabecera `x-admin-secret`): importa a `hydra_vault` desde una ficha (`{ "site": "dontorrent", "detailUrl": "…" }`) o un magnet conocido.
+
+---
+
 ## 📡 Endpoints
 
 La API REST de administración (`/api/vault`, `/api/health`, `/api/stats`, CRUD, bulk, parse-magnet) fue eliminada. Solo quedan los endpoints del panel de administración (guardar, listar y eliminar) y los endpoints de Stremio.
@@ -256,7 +296,7 @@ Elimina uno o varios registros seleccionados. Cuerpo JSON con `{ "ids": [1, 2, 3
   - `tt123:1:3` / `tmdb:55:1:3` → temporada 1, episodio 3 (anime sin temporada guardada cuenta como temporada 1).
   - `kitsu:46474:12` / `anilist:154587:12` → capítulo 12.
 - `GET /catalog/:type/:id.json`: Catálogo navegable desde Stremio. El filtro *genre* acepta la plataforma (`Viki`, `iQiyi`, `Europa`, `América`), la calidad (`4K`, `1080p`) y el idioma (`Latino`, `Inglés`, `Chino`, `Portugués`, `Polaco`…), buscando también en `audio_lang` y `subtitles`.
-- `GET /meta/:type/:id.json`: Metadatos con la lista ordenada de temporadas/episodios (`kitsu:ID:CAP` para anime con Kitsu).
+- `GET /meta/:type/:id.json`: Metadatos con la lista ordenada de temporadas/episodios (`kitsu:ID:CAP` para anime con Kitsu). También resuelve fichas del buscador web (`hydra:scrap-…`).
 
 ---
 
@@ -272,10 +312,14 @@ Hydra-Vault/
 ├── vercel.json                  # Configuración de rutas y rewrites de Vercel
 ├── api/
 │   ├── index.js                 # Punto de entrada para Vercel Serverless
-│   └── admin/
-│       ├── add.js               # POST /api/admin/add (guardar desde /admin)
-│       ├── list.js              # GET /api/admin/list (buscar/listar desde /admin)
-│       └── delete.js            # POST /api/admin/delete (eliminar seleccionados)
+│   ├── admin/
+│   │   ├── add.js               # POST /api/admin/add (guardar desde /admin)
+│   │   ├── list.js              # GET /api/admin/list (buscar/listar desde /admin)
+│   │   ├── delete.js            # POST /api/admin/delete (eliminar seleccionados)
+│   │   └── import.js            # POST /api/admin/import (importar de las webs torrent)
+│   └── scrapers/
+│       ├── search.js            # GET /api/scrapers/search (búsqueda unificada)
+│       └── status.js            # GET /api/scrapers/status (salud de cada web)
 ├── public/
 │   ├── index.html               # Landing pública estática
 │   ├── admin.html               # Formulario de administración estático
@@ -286,6 +330,20 @@ Hydra-Vault/
 │   ├── app.js                   # Configuración de Express, CORS y middleware
 │   ├── config.js                # Gestión centralizada de configuración
 │   ├── db.js                    # Cliente PostgreSQL oficial 'pg' + Fallback en memoria
+│   ├── scrapers/
+│   │   ├── index.js             # Registro de webs, búsqueda paralela y salud
+│   │   ├── base.js              # Normalización de resultados y helpers de HTML
+│   │   ├── http.js              # Cliente fetch con timeout y caché TTL
+│   │   ├── language.js          # Filtro SOLO español (latino/castellano) + parsers de release
+│   │   ├── bencode.js           # Decodificador bencode mínimo
+│   │   ├── torrent.js           # .torrent → magnet (hash BTIH)
+│   │   ├── pow.js               # Prueba de trabajo de descargas DonTorrent/MejorTorrent
+│   │   ├── streams.js           # Puente scrapers → streams de Stremio
+│   │   ├── dontorrent.js        # Motor DonTorrent/MejorTorrent
+│   │   ├── pelispanda.js        # API JSON de Pelispanda
+│   │   ├── elitetorrent.js      # EliteTorrent (WordPress + enlaces acortados)
+│   │   ├── sinsitio.js          # SinSitio (DataLife Engine)
+│   │   └── limetorrent.js       # LimeTorrent (índice internacional filtrado a español)
 │   ├── routes/
 │   │   └── stremio.js           # Rutas del protocolo Stremio Addon v3
 │   ├── stremio/

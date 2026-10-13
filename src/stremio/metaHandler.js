@@ -1,6 +1,47 @@
 const db = require('../db');
 const { isEpisodicType, parseStremioId } = require('../utils/episodes');
-const { cleanShowName, posterFor, backgroundFor } = require('../utils/titles');
+const { cleanShowName, posterFor, backgroundFor, createFallbackPoster } = require('../utils/titles');
+const scrapers = require('../scrapers');
+const { decodeScrapId } = require('../scrapers/streams');
+
+/** Meta para IDs del catálogo del buscador (hydra:scrap-<site>-<b64>). */
+async function metaFromScrapId(cleanId, res) {
+  const scrap = decodeScrapId(cleanId);
+  if (!scrap) return false;
+
+  const resolved = await scrapers.resolveResult(scrap.site, scrap.detailUrl).catch(() => []);
+  const first = resolved.find(item => item.title) || null;
+
+  if (!first) {
+    res.json({ meta: null });
+    return true;
+  }
+
+  const isSeries = resolved.some(item => item.season !== null && item.season !== undefined) || /\/serie\//i.test(scrap.detailUrl);
+  const stremioType = isSeries ? 'series' : 'movie';
+  const name = cleanShowName(first.title, isSeries ? 'series' : 'movie');
+  const magnets = resolved.filter(item => item.magnet);
+
+  const meta = {
+    id: cleanId,
+    type: stremioType,
+    name,
+    genres: [first.siteLabel, first.audio || 'Español'].filter(Boolean),
+    poster: first.poster || createFallbackPoster(name, first.siteLabel || 'Web', first.quality),
+    posterShape: 'poster',
+    description: [
+      `🌐 ${first.siteLabel || scrap.site} • Contenido de habla hispana`,
+      first.quality && first.quality !== 'N/D' ? `Calidad: ${first.quality}` : null,
+      first.size ? `Tamaño: ${first.size}` : null,
+      `Audio: ${first.audio || 'Español'}`,
+      magnets.length ? `${magnets.length} versión(es) de torrent disponibles.` : 'Ficha encontrada en la web.'
+    ].filter(Boolean).join('\n'),
+    releaseInfo: first.year ? String(first.year) : undefined
+  };
+
+  res.json({ meta });
+  return true;
+}
 
 /**
  * Handles GET /meta/:type/:id.json requests
@@ -11,6 +52,12 @@ async function handleMetaRequest(req, res) {
   const cleanId = id.replace(/\.json$/, '');
 
   try {
+    // Fichas del catálogo del buscador de webs torrent.
+    if (cleanId.startsWith('hydra:scrap-')) {
+      await metaFromScrapId(cleanId, res);
+      return;
+    }
+
     const rows = await db.findStreamsForStremio({ type, id: cleanId });
 
     if (!rows || rows.length === 0) {

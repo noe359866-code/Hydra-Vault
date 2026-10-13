@@ -69,6 +69,33 @@ function getManifest(baseUrl = '') {
           { name: 'search', isRequired: false },
           { name: 'skip', isRequired: false }
         ]
+      },
+      {
+        id: 'hydra_torrent_movies',
+        type: 'movie',
+        name: 'Torrents Español · Películas (Web)',
+        extra: [
+          { name: 'search', isRequired: false },
+          { name: 'skip', isRequired: false }
+        ]
+      },
+      {
+        id: 'hydra_torrent_series',
+        type: 'series',
+        name: 'Torrents Español · Series (Web)',
+        extra: [
+          { name: 'search', isRequired: false },
+          { name: 'skip', isRequired: false }
+        ]
+      },
+      {
+        id: 'hydra_torrent_anime',
+        type: 'anime',
+        name: 'Torrents Español · Anime (Web)',
+        extra: [
+          { name: 'search', isRequired: false },
+          { name: 'skip', isRequired: false }
+        ]
       }
     ],
     behaviorHints: {

@@ -10,6 +10,9 @@
     { "source": "/api/admin/add", "destination": "/api/admin/add.js" },
     { "source": "/api/admin/list", "destination": "/api/admin/list.js" },
     { "source": "/api/admin/delete", "destination": "/api/admin/delete.js" },
+    { "source": "/api/admin/import", "destination": "/api/admin/import.js" },
+    { "source": "/api/scrapers/search", "destination": "/api/scrapers/search.js" },
+    { "source": "/api/scrapers/status", "destination": "/api/scrapers/status.js" },
     { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }

@@ -838,3 +838,234 @@ if (secretInput.value) {
   magnetInput.focus();
   loadDataPage();
 }
+
+// ---------------------------------------------------------------------------
+// 🌐 Buscador de webs torrent (contenido de habla hispana)
+// ---------------------------------------------------------------------------
+const scraperPanel = $('scraper-panel');
+const scraperForm = $('scraper-filters');
+const scraperQuery = $('scraper-query');
+const scraperType = $('scraper-type');
+const scraperButton = $('scraper-search-button');
+const scraperResults = $('scraper-results');
+const scraperEmpty = $('scraper-empty');
+const scraperStatus = $('scraper-status');
+
+const SCRAPER_LABELS = {
+  dontorrent: 'DonTorrent',
+  mejortorrent: 'MejorTorrent',
+  pelispanda: 'Pelispanda',
+  elitetorrent: 'EliteTorrent',
+  sinsitio: 'SinSitio',
+  limetorrent: 'LimeTorrent'
+};
+
+function scraperShowStatus(message, isError = false) {
+  scraperStatus.textContent = message;
+  scraperStatus.dataset.kind = isError ? 'error' : 'ok';
+  scraperStatus.hidden = false;
+}
+
+function scraperBadge(text) {
+  const span = document.createElement('span');
+  span.className = 'scraper-badge';
+  span.textContent = text;
+  return span;
+}
+
+function selectedScraperSites() {
+  return [...scraperPanel.querySelectorAll('#scraper-sites input:checked')].map(box => box.value);
+}
+
+function renderScraperResults(payload) {
+  const { results = [], sites = [] } = payload;
+  scraperResults.replaceChildren();
+
+  // Salud de cada sitio consultado.
+  const health = document.createElement('div');
+  health.className = 'scraper-health';
+  for (const site of sites) {
+    const chip = document.createElement('span');
+    chip.className = `scraper-site-chip${site.ok === false ? ' scraper-site-down' : ''}`;
+    chip.textContent = `${site.ok === false ? '●' : '●'} ${site.label}${site.latencyMs ? ` · ${site.latencyMs} ms` : ''}`;
+    chip.title = site.lastError || 'Responde correctamente';
+    health.appendChild(chip);
+  }
+  scraperResults.appendChild(health);
+
+  if (!results.length) {
+    scraperResults.hidden = true;
+    scraperEmpty.hidden = false;
+    return;
+  }
+  scraperEmpty.hidden = true;
+  scraperResults.hidden = false;
+
+  for (const result of results) {
+    const card = document.createElement('article');
+    card.className = 'scraper-item';
+
+    const head = document.createElement('div');
+    head.className = 'scraper-item-head';
+
+    const title = document.createElement('p');
+    title.className = 'scraper-item-title';
+    title.textContent = result.title;
+    head.appendChild(title);
+
+    const badges = document.createElement('div');
+    badges.className = 'scraper-item-badges';
+    badges.appendChild(scraperBadge(`🏷️ ${result.siteLabel || SCRAPER_LABELS[result.site] || result.site}`));
+    if (result.quality && result.quality !== 'N/D') badges.appendChild(scraperBadge(`📺 ${result.quality}`));
+    if (result.audio) badges.appendChild(scraperBadge(`🌐 ${result.audio}`));
+    if (result.size) badges.appendChild(scraperBadge(`💾 ${result.size}`));
+    if (Number.isInteger(result.seeders) && result.seeders > 0) badges.appendChild(scraperBadge(`⚡ ${result.seeders} seeds`));
+    if (result.magnet) badges.appendChild(scraperBadge('✅ Magnet listo'));
+    head.appendChild(badges);
+    card.appendChild(head);
+
+    const actions = document.createElement('div');
+    actions.className = 'scraper-item-actions';
+
+    const importButton = document.createElement('button');
+    importButton.type = 'button';
+    importButton.className = 'button button-secondary';
+    importButton.textContent = result.magnet ? '⬇️ Importar directo' : '⬇️ Importar (resuelve magnet)';
+    importButton.addEventListener('click', () => importScraped(result, importButton));
+    actions.appendChild(importButton);
+
+    if (result.magnet) {
+      const fillButton = document.createElement('button');
+      fillButton.type = 'button';
+      fillButton.className = 'link-button';
+      fillButton.textContent = 'Rellenar formulario';
+      fillButton.addEventListener('click', () => fillFormFromScraped(result));
+      actions.appendChild(fillButton);
+    }
+
+    if (result.detailUrl) {
+      const link = document.createElement('a');
+      link.className = 'link-button';
+      link.href = result.detailUrl;
+      link.target = '_blank';
+      link.rel = 'noreferrer noopener';
+      link.textContent = 'Ver en la web ↗';
+      actions.appendChild(link);
+    }
+
+    card.appendChild(actions);
+    scraperResults.appendChild(card);
+  }
+}
+
+async function importScraped(result, button) {
+  const secret = secretInput.value.trim();
+  if (!secret) {
+    renderSecretState(true);
+    scraperShowStatus('Introduce tu clave de administrador arriba para poder importar.', true);
+    secretInput.focus();
+    return;
+  }
+
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '⏳ Importando…';
+  scraperShowStatus(`Importando desde ${result.siteLabel || result.site}: ${result.title} …`);
+
+  try {
+    const body = { site: result.site, detailUrl: result.detailUrl };
+    if (result.magnet) {
+      body.magnet = result.magnet;
+      body.title = result.title;
+      if (result.quality && result.quality !== 'N/D') body.quality = result.quality;
+      if (result.audio) body.audio_lang = result.audio;
+      if (result.size) body.size = result.size;
+      if (Number.isInteger(result.seeders)) body.seeders = result.seeders;
+      if (result.season !== null && result.season !== undefined) body.season = result.season;
+      if (result.episode !== null && result.episode !== undefined) body.episode = result.episode;
+      if (result.type && ['movie', 'series', 'anime'].includes(result.type)) body.type = result.type;
+    }
+
+    const response = await fetch('/api/admin/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+      body: JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok || !payload.success) {
+      scraperShowStatus(payload.error || 'No se pudo importar el contenido.', true);
+      return;
+    }
+
+    const parts = [`${payload.imported} versión(es) importadas a la bóveda`];
+    if (payload.duplicated) parts.push(`${payload.duplicated} duplicadas omitidas`);
+    scraperShowStatus(`✅ ${parts.join(' · ')}.`);
+    renderRecent();
+    loadDataPage();
+  } catch (error) {
+    scraperShowStatus(`Error de red al importar: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function fillFormFromScraped(result) {
+  magnetInput.value = result.magnet || '';
+  titleInput.value = result.title || '';
+  if (result.type) setType(result.type);
+  if (result.quality && result.quality !== 'N/D') {
+    const select = $('quality');
+    if ([...select.options].some(option => option.value === result.quality)) select.value = result.quality;
+  }
+  if (result.audio) {
+    setLangField('audio_lang', result.audio);
+  }
+  if (result.size) {
+    $('size').value = result.size;
+    $('size').dataset.auto = '1';
+  }
+  if (Number.isInteger(result.seeders)) $('seeders').value = String(result.seeders);
+  magnetInput.dispatchEvent(new Event('input', { bubbles: true }));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  titleInput.focus();
+  showStatus('Rellenado desde el buscador de webs. Revisa los datos y guarda.', false);
+}
+
+scraperForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const term = scraperQuery.value.trim();
+  if (term.length < 2) {
+    scraperShowStatus('Escribe al menos 2 caracteres para buscar.', true);
+    return;
+  }
+
+  const sites = selectedScraperSites();
+  if (!sites.length) {
+    scraperShowStatus('Marca al menos un sitio donde buscar.', true);
+    return;
+  }
+
+  scraperButton.disabled = true;
+  scraperButton.textContent = '🔎 Buscando…';
+  scraperShowStatus(`Buscando “${term}” en ${sites.length} sitio(s)… (puede tardar unos segundos)`);
+
+  try {
+    const params = new URLSearchParams({ q: term, sites: sites.join(',') });
+    if (scraperType.value) params.set('type', scraperType.value);
+    const response = await fetch(`/api/scrapers/search?${params.toString()}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+      scraperShowStatus(payload.error || 'La búsqueda falló.', true);
+      return;
+    }
+    renderScraperResults(payload);
+    scraperShowStatus(`${payload.total} resultado(s) en español para “${term}”.`, payload.total === 0);
+  } catch (error) {
+    scraperShowStatus(`Error de red: ${error.message}`, true);
+  } finally {
+    scraperButton.disabled = false;
+    scraperButton.textContent = 'Buscar';
+  }
+});
