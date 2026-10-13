@@ -18,9 +18,9 @@ const config = {
   // Stremio Addon Configuration
   addon: {
     id: 'community.hydra.torrents',
-    version: '1.1.0',
+    version: '1.2.0',
     name: 'Hydra Torrents',
-    description: 'Contenido exclusivo, rarezas, animes y dramas asiáticos (Viki, iQiyi, Europa, América) curados a mano.',
+    description: 'Contenido curado (Viki, iQiyi, rarezas) más buscador en vivo de torrents en español (latino y castellano) en DonTorrent, MejorTorrent, Pelispanda, EliteTorrent, SinSitio y LimeTorrent.',
     logo: '/favicon.svg',
     contactEmail: 'contact@hydratorrents.com',
   }

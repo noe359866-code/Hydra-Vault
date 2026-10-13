@@ -177,7 +177,7 @@ function formatStremioStream(entry) {
     titleLines.push(techDetails.join(' | '));
   }
   
-  titleLines.push(`🔒 Hydra Vault • Curated Stream`);
+  titleLines.push(entry.badge || `🔒 Hydra Vault • Curated Stream`);
 
   const stream = {
     name: `[Hydra] ${quality}\n${platform}`,

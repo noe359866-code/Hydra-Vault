@@ -7,8 +7,8 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Administración — Hydra Vault</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css?v=5">
-  <script src="/admin.js?v=5" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=6">
+  <script src="/admin.js?v=6" defer></script>
 </head>
 <body class="admin-page">
   <div class="site-shell admin-shell">
@@ -289,6 +289,42 @@
           <p id="form-status" class="form-status" role="status" aria-live="polite" hidden></p>
         </div>
       </form>
+
+      <!-- Buscador de webs torrent (contenido español: latino, castellano…) -->
+      <section class="data-panel scraper-panel" id="scraper-panel" aria-labelledby="scraper-title">
+        <div class="data-head">
+          <h2 id="scraper-title">🌐 Buscador de webs torrent</h2>
+          <p class="data-sub">
+            Busca UNA vez en DonTorrent, MejorTorrent, Pelispanda, EliteTorrent, SinSitio y LimeTorrent.
+            Solo aparece contenido de habla hispana (latino, castellano, español o subtitulado).
+          </p>
+        </div>
+
+        <form class="data-filters" id="scraper-filters">
+          <input id="scraper-query" type="search" maxlength="120" spellcheck="false"
+                 placeholder="Título a buscar en las webs… (ej.: Moana)" aria-label="Buscar en webs torrent">
+          <select id="scraper-type" aria-label="Filtrar por tipo">
+            <option value="">Todo</option>
+            <option value="movie">Películas</option>
+            <option value="series">Series</option>
+            <option value="anime">Anime</option>
+          </select>
+          <button type="submit" class="button button-secondary" id="scraper-search-button">Buscar</button>
+        </form>
+
+        <div class="scraper-sites" id="scraper-sites" aria-label="Sitios activos">
+          <label><input type="checkbox" value="dontorrent" checked> DonTorrent</label>
+          <label><input type="checkbox" value="mejortorrent" checked> MejorTorrent</label>
+          <label><input type="checkbox" value="pelispanda" checked> Pelispanda</label>
+          <label><input type="checkbox" value="elitetorrent" checked> EliteTorrent</label>
+          <label><input type="checkbox" value="sinsitio" checked> SinSitio</label>
+          <label><input type="checkbox" value="limetorrent" checked> LimeTorrent</label>
+        </div>
+
+        <p class="data-status" id="scraper-status" role="status" aria-live="polite" hidden></p>
+        <div class="scraper-results" id="scraper-results" hidden></div>
+        <p class="data-empty" id="scraper-empty" hidden>Sin resultados en las webs seleccionadas.</p>
+      </section>
 
       <section class="recent" id="recent" hidden aria-labelledby="recent-title">
         <div class="recent-head">

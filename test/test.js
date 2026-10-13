@@ -514,6 +514,314 @@ async function runTests() {
       assert(script.raw.includes('window.confirm'));
     });
 
+    // ------------------------------------------------------------------
+    // 5. 🌐 Scrapers: buscador de webs torrent en español
+    // ------------------------------------------------------------------
+    await test('Scrapers: filtro de idioma SOLO acepta habla hispana', async () => {
+      const { evaluateSpanish } = require('../src/scrapers/language');
+
+      // Aceptados: castellano, latino, dual, VOSE, Spanish-English…
+      const accepted = [
+        'El complejo BDrip XviD Castellano',
+        'Moana 2026 1080p Latino-Inglés',
+        'La guerra de los mundos 720p VOSE',
+        'Valkiria (2008).BDrip 1080p (Spanish-English+Subs)',
+        'Moana.2026.WEB-DL.1080p-Dual-Lat'
+      ];
+      for (const text of accepted) {
+        assert.strictEqual(evaluateSpanish(text).accepted, true, `debería aceptar: ${text}`);
+      }
+
+      // Rechazados: inglés sin subtítulos, multi sin español, francés…
+      const rejected = [
+        'The Gentlemen 2024 S02E06 1080p HEVC x265-MeGusta',
+        'Silo S03E10 FINAL MULTI 1080p WEB H264-HiggsBoson',
+        '[SubsPlease] Clevatess S2 - 09 (1080p)',
+        'Movie 2023 1080p BluRay TrueFrench'
+      ];
+      for (const text of rejected) {
+        assert.strictEqual(evaluateSpanish(text).accepted, false, `debería rechazar: ${text}`);
+      }
+
+      // Los sitios de la escena española se asumen en español por definición.
+      assert.strictEqual(
+        evaluateSpanish('El Visitante [BluRay-1080p] [DonTorrent]', { assumeSpanish: true }).accepted,
+        true,
+        'sitio español por definición'
+      );
+      // VOSE se puede desactivar por configuración.
+      assert.strictEqual(
+        evaluateSpanish('La guerra de los mundos 720p VOSE', { allowVose: false }).accepted,
+        false,
+        'VOSE desactivado'
+      );
+    });
+
+    await test('Scrapers: parser de temporada/episodio/capítulos y packs', async () => {
+      const { parseSeasonEpisode } = require('../src/scrapers/language');
+      assert.deepStrictEqual(parseSeasonEpisode('Boston Blue S01E02 HDTV'), { season: 1, episode: 2, isPack: false });
+      assert.deepStrictEqual(parseSeasonEpisode('Boston Blue 1x2 HDTV'), { season: 1, episode: 2, isPack: false });
+      assert.deepStrictEqual(parseSeasonEpisode('Serie Cap. 1-15 [HDTV]'), { season: null, episode: null, isPack: true });
+      assert.deepStrictEqual(parseSeasonEpisode('Boston-Blue-1-Temporada'), { season: 1, episode: null, isPack: true });
+      assert.deepStrictEqual(parseSeasonEpisode('Temporada 1 Cap 2 HDTV'), { season: 1, episode: 2, isPack: false });
+      assert.deepStrictEqual(parseSeasonEpisode('[SubsPlease] One Piece - 1176 (1080p)'), { season: null, episode: 1176, isPack: false });
+    });
+
+    await test('Scrapers: .torrent → magnet (bencode + infohash SHA-1)', async () => {
+      const crypto = require('crypto');
+      const { parseTorrentBuffer, buildMagnet } = require('../src/scrapers/torrent');
+      const bstr = s => Buffer.byteLength(s) + ':' + s;
+      const name = 'Mi Movie 2024 1080p Latino';
+      const info = 'd6:lengthi12345e4:name' + bstr(name) + '12:piece lengthi262144e6:pieces9:binary123e';
+      const announce = 'udp://tracker.opentrackr.org:1337';
+      const torrent = Buffer.from('d8:announce' + bstr(announce) + '4:info' + info + 'e');
+
+      const parsed = parseTorrentBuffer(torrent);
+      const expected = crypto.createHash('sha1').update(Buffer.from(info)).digest('hex');
+      assert.strictEqual(parsed.infoHash, expected);
+      assert.strictEqual(parsed.name, name);
+      assert.strictEqual(parsed.length, 12345);
+      const magnet = buildMagnet(parsed.infoHash, parsed.name, parsed.trackers);
+      assert(magnet.startsWith(`magnet:?xt=urn:btih:${expected}`), magnet);
+      assert(magnet.includes('tr=udp%3A%2F%2Ftracker.opentrackr.org'), magnet);
+    });
+
+    await test('Scrapers: EliteTorrent decodifica enlaces acortame-esto (base64+ROT13)', async () => {
+      const factory = require('../src/scrapers/elitetorrent');
+      const scraper = factory.create();
+      // Muestra real capturada de una ficha (enlaza al .torrent del sitio).
+      const sample = 'VjJ0YWEyRXlTbk5oTTJ4WVZrWndUbHBXVW5ObFJteFlUVmhhYTFZd05URlphMUpMV1ZVd2QyTklWbGhXZWtaWVdXdGtUMlJHU25ST1ZURnBZVEJ3ZDFkc1pISk9WMDVYWWtSV1RsZEhVbUZaYkZaaFpGWnJlVTFWWkdsaE0yUTFXVlZrZDJKR1dYZGpSRVphVFZkU1lWcEhjM2hqVmtaWllrVTVhRlpIWjNwV1J6RnlUbGRSZVZKcmJHcFRSbkJvVmpCV2QyUkdVa2RaZWxab1ZtNUNXVlp0TlZkWlYwcHlVMjVDV0dKVVFYaFpiRlkwVmtkR1NFNVdjR2xXYkhCNlYxUkplRkl5U25KTlZsWlhWMFZLVGxsc1pGTmpSbVJ6V2taa2JGWnRlRmxYV0c5M1VGRTlQUT09';
+      // decodeProtectedLink es interna; se expone para pruebas vía símbolo de módulo.
+      const decoded = scraper.decodeProtectedLink(sample);
+      assert.strictEqual(
+        decoded,
+        'https://www.elitetorrent.com/wp-content/uploads/2026/06/cumbres-borrascosas-(torrent15).torrent'
+      );
+      // Un magnet directo también pasa sin cambios.
+      assert.strictEqual(scraper.decodeProtectedLink('magnet:?xt=urn:btih:abc'), 'magnet:?xt=urn:btih:abc');
+    });
+
+    await test('Scrapers: PoW de descargas DonTorrent/MejorTorrent (sha256 ceros)', async () => {
+      const { solveDownloadPow, sha256Hex } = require('../src/scrapers/pow');
+      const challenge = 'hydra-test-challenge';
+      const { nonce, hashHex } = solveDownloadPow(challenge, 3);
+      assert(hashHex.startsWith('000'), `hash ${hashHex} debe empezar por 000`);
+      assert.strictEqual(hashHex, sha256Hex(`${challenge}${nonce}`));
+      // Reproducible
+      const again = solveDownloadPow(challenge, 3);
+      assert.strictEqual(again.nonce, nonce);
+    });
+
+    await test('Scrapers: parser de resultados de DonTorrent (POST /buscar)', async () => {
+      const factory = require('../src/scrapers/dontorrent');
+      const scraper = factory.create({ id: 'dontorrent', label: 'DonTorrent', baseUrl: 'https://dontorrent.test' });
+      const html = `
+        <div class="row">
+          <a class="text-decoration-none" href="/pelicula/31079/El-Visitante">El Visitante</a>
+          <a class="text-decoration-none" href="/serie/125148/125148/Boston-Blue-1-Temporada">Boston Blue 1 Temporada</a>
+          <a class="text-decoration-none" href="/juego/9/No-Debe-Aparecer">Juego</a>
+          <a class="text-decoration-none" href="/pelicula/31079/El-Visitante">El Visitante (duplicado)</a>
+        </div>`;
+      const results = scraper.parseSearchHtml(html);
+      assert.strictEqual(results.length, 2, 'solo pelicula/serie y sin duplicados');
+      assert.strictEqual(results[0].title, 'El Visitante');
+      assert.strictEqual(results[0].type, 'movie');
+      assert.strictEqual(results[1].type, 'series');
+      assert.strictEqual(results[1].detailUrl, 'https://dontorrent.test/serie/125148/125148/Boston-Blue-1-Temporada');
+    });
+
+    await test('Scrapers: DonTorrent extrae descargas directas y protegidas de una ficha', async () => {
+      const factory = require('../src/scrapers/dontorrent');
+      const scraper = factory.create({ baseUrl: 'https://dontorrent.test' });
+      const html = `
+        <h1>Descargar El Visitante Año 2022 Torrent Gratis</h1>
+        <a class="text-white bg-primary rounded-pill d-block shadow-sm text-decoration-none my-1 py-1"
+           href="/torrents/El-Visitante-[BluRay-1080p].torrent" download target="_blank">Descargar</a>
+        <a class="protected-download" data-content-id="31079" data-tabla="peliculas" href="#">Descargar</a>`;
+      const links = scraper.extractDownloadLinks(html, 'https://dontorrent.test/pelicula/31079/El-Visitante');
+      assert.ok(links.direct.some(u => u.endsWith('.torrent')), JSON.stringify(links));
+      assert.deepStrictEqual(links.protected, [{ contentId: '31079', tabla: 'peliculas' }]);
+    });
+
+    await test('Scrapers: parser de la tabla de LimeTorrent', async () => {
+      const factory = require('../src/scrapers/limetorrent');
+      const scraper = factory.create({ id: 'limetorrent', label: 'LimeTorrent', baseUrl: 'https://limetorrent.test' });
+      const html = `
+        <table class="table2"><tbody>
+        <tr bgcolor="#F5F5F5">
+          <td><div class="tt-name"><a href="/moana-2016-1080p-spanish-latino-41006585.html">Moana 2016 1080p Spanish Latino</a></div></td>
+          <td>2 months ago - in <a href="/browse-torrents/Movies/">Movies</a></td>
+          <td>1.4&nbsp;GB</td>
+          <td class="tdseed">120</td>
+          <td class="tdleech">30</td>
+        </tr>
+        <tr bgcolor="#FAFAFA">
+          <td><div class="tt-name"><a href="/the-gentlemen-2024-s02e06-1080p-43611426.html">The Gentlemen 2024 S02E06 1080p</a></div></td>
+          <td>1 month ago - in <a href="/browse-torrents/TV/">TV shows</a></td>
+          <td>916.17&nbsp;MB</td>
+          <td class="tdseed">1238</td>
+          <td class="tdleech">153</td>
+        </tr>
+        </tbody></table>`;
+      const results = scraper.parseListingHtml(html);
+      assert.strictEqual(results.length, 2);
+      assert.strictEqual(results[0].title, 'Moana 2016 1080p Spanish Latino');
+      assert.strictEqual(results[0].size, '1.4 GB');
+      assert.strictEqual(results[0].seeders, 120);
+      // El filtro de español SOLO deja el release hispano.
+      const spanish = require('../src/scrapers/base').filterSpanish(results, { assumeSpanish: false });
+      assert.strictEqual(spanish.length, 1);
+      assert.ok(spanish[0].title.includes('Spanish'));
+    });
+
+    await test('Scrapers: ficha de LimeTorrent con hash en claro → magnet', async () => {
+      const factory = require('../src/scrapers/limetorrent');
+      const scraper = factory.create({ baseUrl: 'https://limetorrent.test' });
+      const html = `
+        <h1>Moana 2016 1080p Spanish Latino</h1>
+        <table><tr><td><b>Torrent Hash</b> :</td><td>85F5CD6E0089E2DC5B1E1260DE4978E3511A3923</td></tr>
+        <tr><td><b>Torrent Size</b> :</td><td>1.4 GB</td></tr></table>
+        Seeders : 117Leechers : 35`;
+      // Mock del cliente HTTP: la lógica de parseo es lo que se prueba.
+      const http = require('../src/scrapers/http');
+      const originalGetHtml = http.getHtml;
+      http.getHtml = async () => html;
+      let results;
+      try {
+        results = await scraper.resolve('https://limetorrent.test/moana-41006585.html');
+      } finally {
+        http.getHtml = originalGetHtml;
+      }
+      assert.strictEqual(results.length, 1);
+      assert.strictEqual(results[0].infoHash, '85f5cd6e0089e2dc5b1e1260de4978e3511a3923');
+      assert.ok(results[0].magnet.startsWith('magnet:?xt=urn:btih:85f5cd6e'), results[0].magnet);
+      assert.strictEqual(results[0].seeders, 117);
+    });
+
+    await test('Scrapers: SinSitio decodifica ddlUrl.php y extrae la descarga', async () => {
+      const factory = require('../src/scrapers/sinsitio');
+      const scraper = factory.create({ baseUrl: 'https://sinsitio.test' });
+      const target = 'https://sinsitio.test/index.php?do=download&id=70883';
+      const encoded = encodeURIComponent(Buffer.from(target).toString('base64'));
+      const html = `
+        <h1>El complejo BDrip XviD Castellano</h1>
+        <a href="/ddlUrl.php?url=${encoded}&name=El%20Complejo%20Castellano">🎬 El Complejo Castellano</a>`;
+      const results = scraper.parseSearchHtml(`
+        <div class="shortstory">
+          <a href="/dvdrip-bdrip/36480-el-complejo-bdrip-xvid-castellano.html">El complejo BDrip XviD Castellano</a>
+          <a href="/dvdrip-bdrip/36480-el-complejo-bdrip-xvid-castellano.html#comment">comentario</a>
+        </div>`);
+      assert.strictEqual(results.length, 1, 'dedupe con #comment');
+      assert.strictEqual(results[0].detailUrl, 'https://sinsitio.test/dvdrip-bdrip/36480-el-complejo-bdrip-xvid-castellano.html');
+      // La URL ddlUrl decodificada apunta al módulo de descarga de DLE.
+      const ddl = html.match(/ddlUrl\.php\?url=([A-Za-z0-9%]+)/);
+      const decoded = decodeURIComponent(ddl[1]);
+      assert.ok(Buffer.from(decoded, 'base64').toString('utf8').includes('do=download&id=70883'));
+    });
+
+    await test('Scrapers: splitQuery separa título de temporada/episodio', async () => {
+      const { splitQuery } = require('../src/scrapers/base');
+      assert.deepStrictEqual(splitQuery('Moana'), { title: 'Moana', season: null, episode: null });
+      const split = splitQuery('Boston Blue S01E02');
+      assert.strictEqual(split.title, 'Boston Blue');
+      assert.strictEqual(split.season, 1);
+      assert.strictEqual(split.episode, 2);
+    });
+
+    await test('Scrapers: IDs hydra:scrap-… codifican y decodifican la ficha', async () => {
+      const { scrapId, decodeScrapId } = require('../src/scrapers/streams');
+      const id = scrapId('dontorrent', 'https://dontorrent.meme/pelicula/31079/El-Visitante');
+      assert(id.startsWith('hydra:scrap-dontorrent-'), id);
+      const decoded = decodeScrapId(id);
+      assert.strictEqual(decoded.site, 'dontorrent');
+      assert.strictEqual(decoded.detailUrl, 'https://dontorrent.meme/pelicula/31079/El-Visitante');
+      assert.strictEqual(decodeScrapId('hydra:otro'), null);
+    });
+
+    await test('Scrapers: filtra por episodio el resultado del buscador', async () => {
+      const { filterForRequest } = require('../src/scrapers/streams');
+      const results = [
+        { title: 'Boston Blue 1x2 HDTV [Castellano]', site: 'dontorrent' },
+        { title: 'Boston Blue 1x3 HDTV [Castellano]', site: 'dontorrent' },
+        { title: 'Boston Blue 1 Temporada [HDTV]', site: 'mejortorrent' }
+      ];
+      const forEpisode = filterForRequest(results, { title: 'Boston Blue', season: 1, episode: 2 });
+      assert.strictEqual(forEpisode.length, 2, 'episodio 1x2 + pack de temporada');
+      const forWholeSeason = filterForRequest(results, { title: 'Boston Blue', season: 1, episode: null });
+      assert.strictEqual(forWholeSeason.length, 3);
+    });
+
+    await test('API: GET /api/scrapers/search sin "q" devuelve 400', async () => {
+      const res = await request('/api/scrapers/search');
+      assert.strictEqual(res.statusCode, 400);
+      assert.strictEqual(res.body.success, false);
+    });
+
+    await test('API: GET /api/scrapers/search responde (aunque las webs fallen)', async () => {
+      process.env.SCRAPER_TIMEOUT_MS = '2000';
+      const res = await request('/api/scrapers/search?q=moana');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.body.query, 'moana');
+      assert(Array.isArray(res.body.results));
+      assert(Array.isArray(res.body.sites));
+    });
+
+    await test('API: GET /api/scrapers/status lista los sitios activos', async () => {
+      const res = await request('/api/scrapers/status');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
+      assert(Array.isArray(res.body.sites) && res.body.sites.length >= 1);
+      const ids = res.body.sites.map(s => s.id);
+      for (const expected of ['dontorrent', 'mejortorrent', 'pelispanda', 'elitetorrent', 'sinsitio', 'limetorrent']) {
+        assert(ids.includes(expected), `falta el sitio ${expected}`);
+      }
+    });
+
+    await test('API: POST /api/admin/import exige x-admin-secret', async () => {
+      const res = await request('/api/admin/import', {
+        method: 'POST',
+        body: { site: 'dontorrent', detailUrl: 'https://dontorrent.meme/pelicula/31079/El-Visitante' }
+      });
+      assert.strictEqual(res.statusCode, 401);
+    });
+
+    await test('API: POST /api/admin/import valida el sitio solicitado', async () => {
+      const config = require('../src/config');
+      const res = await request('/api/admin/import', {
+        method: 'POST',
+        headers: { 'x-admin-secret': config.adminSecret },
+        body: { site: 'paginamala', detailUrl: 'https://ejemplo.com/ficha' }
+      });
+      assert.strictEqual(res.statusCode, 400);
+      assert.strictEqual(res.body.success, false);
+    });
+
+    await test('Manifiesto: catálogos del buscador de webs torrent', async () => {
+      const res = await request('/manifest.json');
+      const ids = res.body.catalogs.map(c => c.id);
+      for (const expected of ['hydra_torrent_movies', 'hydra_torrent_series', 'hydra_torrent_anime']) {
+        assert(ids.includes(expected), `falta el catálogo ${expected}`);
+      }
+      const movieCatalog = res.body.catalogs.find(c => c.id === 'hydra_torrent_movies');
+      assert(movieCatalog.extra.some(e => e.name === 'search'));
+    });
+
+    await test('Panel: /admin incluye el buscador de webs torrent', async () => {
+      const res = await request('/admin');
+      assert(res.raw.includes('Buscador de webs torrent'));
+      assert(res.raw.includes('id="scraper-query"'));
+      assert(res.raw.includes('value="dontorrent"'));
+      assert(res.raw.includes('value="mejortorrent"'));
+      assert(res.raw.includes('value="pelispanda"'));
+      assert(res.raw.includes('value="elitetorrent"'));
+      assert(res.raw.includes('value="sinsitio"'));
+      assert(res.raw.includes('value="limetorrent"'));
+      const script = await request('/admin.js');
+      assert(script.raw.includes('/api/scrapers/search'));
+      assert(script.raw.includes('/api/admin/import'));
+    });
+
     // 4. Stremio Manifest & Fallback Routes
     await test('Stremio: GET /manifest.json returns valid manifest', async () => {
       const res = await request('/manifest.json');

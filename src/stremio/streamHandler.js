@@ -1,5 +1,6 @@
 const db = require('../db');
 const { formatStremioStream } = require('../utils/magnet');
+const { streamsFromScrapers, enabled: scrapersEnabled } = require('../scrapers/streams');
 
 /**
  * Handles GET /stream/:type/:id.json requests
@@ -14,11 +15,37 @@ async function handleStreamRequest(req, res) {
   try {
     const rows = await db.findStreamsForStremio({ type, id: cleanId });
 
-    if (!rows || rows.length === 0) {
-      return res.json({ streams: [] });
+    let streams = (rows || []).map(formatStremioStream);
+
+    // Refuerzo con las webs torrent en español (búsqueda en vivo) cuando la
+    // bóveda no cubre el título o se pide un episodio sin versión propia.
+    if (scrapersEnabled()) {
+      const shouldScrape =
+        streams.length === 0 ||
+        /\d+:\d+$/.test(cleanId) || // petición de episodio concreto
+        cleanId.startsWith('hydra:scrap-');
+      if (shouldScrape) {
+        try {
+          const scraped = await streamsFromScrapers({ type, id: cleanId, dbRows: rows || [] });
+          if (scraped.length) {
+            const seen = new Set(streams.map(stream => stream.infoHash || stream.url || stream.externalUrl));
+            for (const stream of scraped) {
+              const key = stream.infoHash || stream.url || stream.externalUrl;
+              if (key && !seen.has(key)) {
+                seen.add(key);
+                streams.push(stream);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Scraper streams fallback failed for ${cleanId}:`, err.message);
+        }
+      }
     }
 
-    const streams = rows.map(formatStremioStream);
+    if (!streams.length) {
+      return res.json({ streams: [] });
+    }
 
     return res.json({ streams });
   } catch (err) {
